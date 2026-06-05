@@ -195,6 +195,63 @@ int32_t focuslast(const Arg *arg) {
 	return 0;
 }
 
+static bool position_focus_candidate(Client *c, uint32_t zone_mask) {
+	return c && selmon && !c->iskilling && !c->isminimized && !c->isunglobal &&
+		   c->mon == selmon && client_surface(c)->mapped &&
+		   !client_is_unmanaged(c) && VISIBLEON(c, selmon) &&
+		   position_zone_matches(c->position_zone, zone_mask);
+}
+
+static Client *next_position_zone_candidate(uint32_t zone_mask, Client *after) {
+	Client *c = NULL;
+	bool seen_after = after == NULL;
+
+	wl_list_for_each(c, &fstack, flink) {
+		if (!position_focus_candidate(c, zone_mask))
+			continue;
+		if (seen_after)
+			return c;
+		if (c == after)
+			seen_after = true;
+	}
+
+	wl_list_for_each(c, &fstack, flink) {
+		if (position_focus_candidate(c, zone_mask))
+			return c;
+	}
+
+	return NULL;
+}
+
+int32_t focuszone(const Arg *arg) {
+	Client *current = NULL;
+	Client *target = NULL;
+	uint32_t zone_mask = 0;
+
+	if (!selmon || !arg || !arg->v)
+		return 0;
+
+	zone_mask = position_zone_mask_from_string(arg->v);
+	if (!zone_mask)
+		return 0;
+
+	current = selmon->sel;
+	target = next_position_zone_candidate(zone_mask, NULL);
+	if (!target)
+		return 0;
+
+	if (current == target)
+		target = next_position_zone_candidate(zone_mask, current);
+
+	if (!target)
+		return 0;
+
+	focusclient(target, 1);
+	if (config.warpcursor)
+		warp_cursor(target);
+	return 0;
+}
+
 int32_t toggle_trackpad_enable(const Arg *arg) {
 	config.disable_trackpad = !config.disable_trackpad;
 	return 0;
@@ -2041,5 +2098,53 @@ int32_t focusid(const Arg *arg) {
 
 	Client *c = arg->tc;
 	client_active(c);
+	return 0;
+}
+
+int32_t placezone(const Arg *arg) {
+	Client *c = NULL;
+	uint32_t zone = POS_ZONE_NONE;
+	int32_t i = 0;
+	const Layout *position_layout = NULL;
+
+	if (!selmon || selmon->isoverview || !arg || !arg->v)
+		return 0;
+
+	c = arg->tc ? arg->tc : selmon->sel;
+	if (!c || !c->mon || c->iskilling || !client_surface(c)->mapped)
+		return 0;
+	if (client_is_unmanaged(c) || c->isfullscreen || c->ismaximizescreen)
+		return 0;
+
+	zone = parse_position_zone(arg->v);
+	if (zone == POS_ZONE_NONE)
+		return 0;
+
+	c->position_zone = zone;
+
+	if (c->isfloating) {
+		c->geom = position_align_floating(c, zone);
+		c->iscustompos = 1;
+		c->float_geom = c->geom;
+		resize(c, c->geom, 0);
+		focusclient(c, 1);
+		return 0;
+	}
+
+	for (i = 0; i < LENGTH(layouts); i++) {
+		if (layouts[i].id == POSITION) {
+			position_layout = &layouts[i];
+			break;
+		}
+	}
+
+	if (!position_layout)
+		return 0;
+
+	if (c->mon->pertag->ltidxs[c->mon->pertag->curtag]->id != POSITION)
+		c->mon->pertag->ltidxs[c->mon->pertag->curtag] = position_layout;
+
+	arrange(c->mon, false, false);
+	focusclient(c, 1);
 	return 0;
 }

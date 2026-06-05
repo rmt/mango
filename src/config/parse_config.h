@@ -1016,6 +1016,9 @@ FuncType parse_func_name(char *func_name, Arg *arg, char *arg_value,
 		(*arg).i = parse_direction(arg_value);
 	} else if (strcmp(func_name, "focusid") == 0) {
 		func = focusid;
+	} else if (strcmp(func_name, "focuszone") == 0) {
+		func = focuszone;
+		(*arg).v = strdup(arg_value);
 	} else if (strcmp(func_name, "incnmaster") == 0) {
 		func = incnmaster;
 		(*arg).i = atoi(arg_value);
@@ -1125,6 +1128,9 @@ FuncType parse_func_name(char *func_name, Arg *arg, char *arg_value,
 		func = switch_layout;
 	} else if (strcmp(func_name, "togglefloating") == 0) {
 		func = togglefloating;
+	} else if (strcmp(func_name, "placezone") == 0) {
+		func = placezone;
+		(*arg).v = strdup(arg_value);
 	} else if (strcmp(func_name, "togglefullscreen") == 0) {
 		func = togglefullscreen;
 	} else if (strcmp(func_name, "togglefakefullscreen") == 0) {

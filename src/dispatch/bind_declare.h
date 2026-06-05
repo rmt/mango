@@ -76,3 +76,5 @@ int32_t dwindle_toggle_split_direction(const Arg *arg);
 int32_t dwindle_split_horizontal(const Arg *arg);
 int32_t dwindle_split_vertical(const Arg *arg);
 int32_t focusid(const Arg *arg);
+int32_t placezone(const Arg *arg);
+int32_t focuszone(const Arg *arg);

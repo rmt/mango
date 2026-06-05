@@ -204,6 +204,27 @@ enum { UNFOLD, FOLD, INVALIDFOLD };
 enum { PREV, NEXT };
 enum { STATE_UNSPECIFIED = 0, STATE_ENABLED, STATE_DISABLED };
 enum { FORCE, UNFORCE };
+enum {
+	POS_ZONE_NONE,
+	POS_ZONE_C,
+	POS_ZONE_BC,
+	POS_ZONE_N,
+	POS_ZONE_S,
+	POS_ZONE_E,
+	POS_ZONE_W,
+	POS_ZONE_NW,
+	POS_ZONE_NE,
+	POS_ZONE_SW,
+	POS_ZONE_SE,
+	POS_ZONE_BN,
+	POS_ZONE_BS,
+	POS_ZONE_BE,
+	POS_ZONE_BW,
+	POS_ZONE_BNW,
+	POS_ZONE_BNE,
+	POS_ZONE_BSW,
+	POS_ZONE_BSE,
+};
 
 enum tearing_mode {
 	TEARING_DISABLED = 0,
@@ -462,6 +483,7 @@ struct Client {
 	float grid_row_per;
 	float old_grid_col_per;
 	float old_grid_row_per;
+	uint32_t position_zone;
 	int32_t grid_col_idx;
 	int32_t grid_row_idx;
 	uint32_t id;
@@ -1139,6 +1161,7 @@ static struct wl_event_source *sync_keymap;
 #include "animation/common.h"
 #include "animation/layer.h"
 #include "animation/tag.h"
+#include "layout/position.h"
 #include "dispatch/bind_define.h"
 #include "ext-protocol/all.h"
 #include "fetch/fetch.h"
@@ -5961,6 +5984,11 @@ void setmon(Client *c, Monitor *m, uint32_t newtags, bool focus) {
 		reset_foreign_tolevel(c, oldmon, m);
 		resize(c, c->geom, 0);
 		client_reset_mon_tags(c, m, newtags);
+		if (c->position_zone == POS_ZONE_NONE && c->tags &&
+			m->pertag->ltidxs[get_tags_first_tag_num(c->tags)]->id ==
+				POSITION) {
+			c->position_zone = POS_ZONE_C;
+		}
 		check_match_tag_floating_rule(c, m);
 		setfloating(c, c->isfloating);
 		setfullscreen(c, c->isfullscreen,
