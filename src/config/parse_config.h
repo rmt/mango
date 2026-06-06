@@ -176,6 +176,14 @@ typedef struct {
 } ConfigTagRule;
 
 typedef struct {
+	char *name;
+	double x;
+	double y;
+	double w;
+	double h;
+} ConfigZone;
+
+typedef struct {
 	char *layer_name; // 布局名称
 	char *animation_type_open;
 	char *animation_type_close;
@@ -239,6 +247,9 @@ typedef struct {
 
 	char **circle_layout;
 	int32_t circle_layout_count;
+	ConfigZone *zones;
+	int32_t zones_count;
+	char *defaultzone;
 
 	uint32_t new_is_master;
 	float default_mfact;
@@ -668,6 +679,94 @@ static char *combine_args_until_empty(char *values[], int count) {
 	}
 
 	return combined;
+}
+
+static double clamp_double(double value, double min, double max) {
+	if (value < min)
+		return min;
+	if (value > max)
+		return max;
+	return value;
+}
+
+static bool parse_zone_percent_value(const char *value, double min, double max,
+									 double *out) {
+	char *end = NULL;
+	double parsed;
+
+	if (!value || !out)
+		return false;
+
+	parsed = strtod(value, &end);
+	if (end == value)
+		return false;
+	while (*end && isspace((unsigned char)*end))
+		end++;
+	if (*end == '%')
+		end++;
+	while (*end && isspace((unsigned char)*end))
+		end++;
+	if (*end != '\0')
+		return false;
+
+	*out = clamp_double(parsed / 100.0, min, max);
+	return true;
+}
+
+static void free_config_zone(ConfigZone *zone) {
+	if (!zone)
+		return;
+	free(zone->name);
+	zone->name = NULL;
+}
+
+static bool append_config_zone(Config *config, const ConfigZone *zone) {
+	ConfigZone *zones = NULL;
+
+	if (!config || !zone || !zone->name)
+		return false;
+
+	zones = realloc(config->zones,
+					(config->zones_count + 1) * sizeof(ConfigZone));
+	if (!zones)
+		return false;
+
+	config->zones = zones;
+	config->zones[config->zones_count] = *zone;
+	config->zones_count++;
+	return true;
+}
+
+static bool add_default_zone(Config *config, const char *name, double x,
+							 double y, double w, double h) {
+	ConfigZone zone = {0};
+
+	zone.name = strdup(name);
+	if (!zone.name)
+		return false;
+	zone.x = x;
+	zone.y = y;
+	zone.w = w;
+	zone.h = h;
+
+	if (!append_config_zone(config, &zone)) {
+		free(zone.name);
+		return false;
+	}
+
+	return true;
+}
+
+static bool ensure_default_zones(Config *config) {
+	if (!config || config->zones_count > 0)
+		return true;
+
+	if (!add_default_zone(config, "left", 0.0, 0.0, 0.5, 1.0))
+		return false;
+	if (!add_default_zone(config, "right", 0.5, 0.0, 0.5, 1.0))
+		return false;
+
+	return true;
 }
 
 uint32_t parse_mod(const char *mod_str) {
@@ -1128,8 +1227,8 @@ FuncType parse_func_name(char *func_name, Arg *arg, char *arg_value,
 		func = switch_layout;
 	} else if (strcmp(func_name, "togglefloating") == 0) {
 		func = togglefloating;
-	} else if (strcmp(func_name, "placezone") == 0) {
-		func = placezone;
+	} else if (strcmp(func_name, "movetozone") == 0) {
+		func = movetozone;
 		(*arg).v = strdup(arg_value);
 	} else if (strcmp(func_name, "togglefullscreen") == 0) {
 		func = togglefullscreen;
@@ -2092,6 +2191,91 @@ bool parse_option(Config *config, char *key, char *value) {
 		} else {
 			convert_hex_to_rgba(config->overlaycolor, color);
 		}
+	} else if (strcmp(key, "defaultzone") == 0) {
+		char *sanitized = sanitize_string(value);
+		char *new_default = NULL;
+
+		if (!sanitized || sanitized[0] == '\0')
+			sanitized = "current";
+
+		new_default = strdup(sanitized);
+		if (!new_default) {
+			fprintf(stderr, "\033[1m\033[31m[ERROR]:\033[33m Failed to "
+							"allocate memory for defaultzone\n");
+			return false;
+		}
+
+		free(config->defaultzone);
+		config->defaultzone = new_default;
+	} else if (strcmp(key, "zone") == 0) {
+		ConfigZone zone = {0};
+		bool has_name = false, has_x = false, has_y = false, has_w = false,
+			 has_h = false;
+		bool parse_error = false;
+		char *token = strtok(value, ",");
+
+		while (token != NULL) {
+			char *colon = strchr(token, ':');
+			if (colon != NULL) {
+				*colon = '\0';
+				char *subkey = token;
+				char *val = colon + 1;
+
+				trim_whitespace(subkey);
+				trim_whitespace(val);
+
+				if (strcmp(subkey, "name") == 0) {
+					char *name = sanitize_string(val);
+					if (name[0] == '\0') {
+						parse_error = true;
+					} else {
+						free(zone.name);
+						zone.name = strdup(name);
+						has_name = zone.name != NULL;
+						parse_error = !has_name;
+					}
+				} else if (strcmp(subkey, "x") == 0) {
+					has_x = parse_zone_percent_value(val, 0.0, 1.0, &zone.x);
+					parse_error |= !has_x;
+				} else if (strcmp(subkey, "y") == 0) {
+					has_y = parse_zone_percent_value(val, 0.0, 1.0, &zone.y);
+					parse_error |= !has_y;
+				} else if (strcmp(subkey, "w") == 0) {
+					has_w = parse_zone_percent_value(val, 0.01, 1.0, &zone.w);
+					parse_error |= !has_w;
+				} else if (strcmp(subkey, "h") == 0) {
+					has_h = parse_zone_percent_value(val, 0.01, 1.0, &zone.h);
+					parse_error |= !has_h;
+				} else {
+					fprintf(stderr,
+							"\033[1m\033[31m[ERROR]:\033[33m Unknown zone "
+							"option:\033[1m\033[31m %s\n",
+							subkey);
+					parse_error = true;
+				}
+			} else {
+				parse_error = true;
+			}
+			token = strtok(NULL, ",");
+		}
+
+		if (parse_error || !has_name || !has_x || !has_y || !has_w || !has_h) {
+			fprintf(stderr,
+					"\033[1m\033[31m[ERROR]:\033[33m Invalid zone "
+					"definition: %s\n",
+					value);
+			free_config_zone(&zone);
+			return false;
+		}
+
+		if (!append_config_zone(config, &zone)) {
+			fprintf(stderr, "\033[1m\033[31m[ERROR]:\033[33m Failed to "
+							"allocate memory for zone\n");
+			free_config_zone(&zone);
+			return false;
+		}
+
+		return true;
 	} else if (strcmp(key, "monitorrule") == 0) {
 		ConfigMonitorRule *new_monitor_rules = realloc(
 			config->monitor_rules,
@@ -3444,6 +3628,19 @@ void free_config(void) {
 	// 释放 circle_layout
 	free_circle_layout(&config);
 
+	if (config.zones) {
+		for (i = 0; i < config.zones_count; i++)
+			free_config_zone(&config.zones[i]);
+		free(config.zones);
+		config.zones = NULL;
+		config.zones_count = 0;
+	}
+
+	if (config.defaultzone) {
+		free(config.defaultzone);
+		config.defaultzone = NULL;
+	}
+
 	// 释放动画资源
 	free_baked_points();
 
@@ -3909,6 +4106,7 @@ void set_value_default() {
 	config.overlaycolor[1] = 0xa5 / 255.0f;
 	config.overlaycolor[2] = 0x7c / 255.0f;
 	config.overlaycolor[3] = 1.0f;
+	config.defaultzone = strdup("current");
 }
 
 void set_default_key_bindings(Config *config) {
@@ -3979,6 +4177,9 @@ bool parse_config(void) {
 	config.scroller_proportion_preset_count = 0;
 	config.circle_layout = NULL;
 	config.circle_layout_count = 0;
+	config.zones = NULL;
+	config.zones_count = 0;
+	config.defaultzone = NULL;
 	config.tag_rules = NULL;
 	config.tag_rules_count = 0;
 	config.cursor_theme = NULL;
@@ -4013,6 +4214,8 @@ bool parse_config(void) {
 	bool parse_correct = true;
 	set_value_default();
 	parse_correct = parse_config_file(&config, filename, true);
+	if (!ensure_default_zones(&config))
+		parse_correct = false;
 	set_default_key_bindings(&config);
 	override_config();
 	return parse_correct;

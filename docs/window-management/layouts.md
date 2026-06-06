@@ -21,7 +21,7 @@ mangowm supports a variety of layouts that can be assigned per tag.
 - `dwindle`
 - `fair`
 - `vertical_fair`
-- `position`
+- `zones`
 
 ---
 
@@ -118,67 +118,47 @@ dwindle_drop_simple_split=1
 
 ---
 
-## Position Layout
+## Zones Layout
 
-The Position layout places each tiled window into a named screen zone. Windows in the same zone intentionally overlap.
+The Zones layout places each tiled window into a named rectangular region of the usable monitor area. Windows assigned to the same zone intentionally overlap.
 
-### Zones
-
-- Center: `C`, `BC`
-- Sides: `N`, `S`, `E`, `W`
-- Corners: `NW`, `NE`, `SW`, `SE`
-- Big sides and corners: `BN`, `BS`, `BE`, `BW`, `BNW`, `BNE`, `BSW`, `BSE`
-
-### Sizing Rules
-
-| Zone | Size |
-| :--- | :--- |
-| `C` | 70% width, 70% height |
-| `BC` | 90% width, 90% height |
-| `N`, `S` | 100% width, 50% height |
-| `E`, `W` | 50% width, 100% height |
-| `NW`, `NE`, `SW`, `SE` | 50% width, 50% height |
-| `BN`, `BS` | 100% width, 70% height |
-| `BE`, `BW` | 70% width, 100% height |
-| `BNW`, `BNE`, `BSW`, `BSE` | 70% width, 70% height |
-
-### Placement Commands
+### Configuration
 
 ```ini
-# Position layout region placement
-# Super+Shift+Numpad = normal zones
-bind=SUPER+SHIFT,KP_Home,placezone,NW
-bind=SUPER+SHIFT,KP_Up,placezone,N
-bind=SUPER+SHIFT,KP_Prior,placezone,NE
-bind=SUPER+SHIFT,KP_Left,placezone,W
-bind=SUPER+SHIFT,KP_Begin,placezone,C
-bind=SUPER+SHIFT,KP_Right,placezone,E
-bind=SUPER+SHIFT,KP_End,placezone,SW
-bind=SUPER+SHIFT,KP_Down,placezone,S
-bind=SUPER+SHIFT,KP_Next,placezone,SE
-
-# Super+Ctrl+Numpad = big zones
-bind=SUPER+CTRL,KP_Home,placezone,BNW
-bind=SUPER+CTRL,KP_Up,placezone,BN
-bind=SUPER+CTRL,KP_Prior,placezone,BNE
-bind=SUPER+CTRL,KP_Left,placezone,BW
-bind=SUPER+CTRL,KP_Begin,placezone,BC
-bind=SUPER+CTRL,KP_Right,placezone,BE
-bind=SUPER+CTRL,KP_End,placezone,BSW
-bind=SUPER+CTRL,KP_Down,placezone,BS
-bind=SUPER+CTRL,KP_Next,placezone,BSE
-
-# Super+Numpad = focus/cycle windows assigned to those zones
-bind=SUPER,KP_Home,focuszone,NW|BNW
-bind=SUPER,KP_Up,focuszone,N|BN
-bind=SUPER,KP_Prior,focuszone,NE|BNE
-bind=SUPER,KP_Left,focuszone,W|BW|NW|SW
-bind=SUPER,KP_Begin,focuszone,C|BC
-bind=SUPER,KP_Right,focuszone,E|BE|NE|SE
-bind=SUPER,KP_End,focuszone,SW|BSW
-bind=SUPER,KP_Down,focuszone,S|BS
-bind=SUPER,KP_Next,focuszone,SE|BSE
+zone=name:left,x:0%,y:0%,w:50%,h:100%
+zone=name:right,x:50%,y:0%,w:50%,h:100%
+defaultzone=current
 ```
+
+Each `zone=` entry requires:
+
+- `name`
+- `x`
+- `y`
+- `w`
+- `h`
+
+Percentages are based on the usable monitor area and support a trailing `%`.
+
+### Default Behavior
+
+- If no valid zones are configured, mangowm installs `left` and `right`.
+- `defaultzone=current` makes new windows inherit the focused window's zone.
+- `defaultzone=<name>` forces new windows into that configured zone.
+- Entering `zones` auto-assigns visible tiled windows by best geometry overlap before the layout resizes them.
+
+### Commands
+
+```ini
+bind=SUPER,bracketleft,focuszone,left
+bind=SUPER+SHIFT,bracketleft,movetozone,left
+bind=SUPER,bracketright,focuszone,right
+bind=SUPER+SHIFT,bracketright,movetozone,right
+```
+
+`focuszone` accepts a single zone or a `|`-separated list such as `left|right`.
+
+`movetozone` assigns the selected window to the target zone. Floating windows keep their current size and are aligned within the zone.
 
 ---
 

@@ -195,19 +195,58 @@ int32_t focuslast(const Arg *arg) {
 	return 0;
 }
 
-static bool position_focus_candidate(Client *c, uint32_t zone_mask) {
-	return c && selmon && !c->iskilling && !c->isminimized && !c->isunglobal &&
-		   c->mon == selmon && client_surface(c)->mapped &&
-		   !client_is_unmanaged(c) && VISIBLEON(c, selmon) &&
-		   position_zone_matches(c->position_zone, zone_mask);
+static bool focuszone_token_matches(const char *zones, const char *name) {
+	const char *cursor = zones;
+	const char *token = zones;
+
+	if (!zones || !name)
+		return false;
+
+	for (;; cursor++) {
+		if (*cursor != '|' && *cursor != '\0')
+			continue;
+
+		if (cursor > token) {
+			size_t len = (size_t)(cursor - token);
+			if (strlen(name) == len) {
+				size_t i;
+				bool matches = true;
+
+				for (i = 0; i < len; i++) {
+					if (toupper((unsigned char)token[i]) !=
+						toupper((unsigned char)name[i])) {
+						matches = false;
+						break;
+					}
+				}
+
+				if (matches)
+					return true;
+			}
+		}
+
+		if (*cursor == '\0')
+			break;
+		token = cursor + 1;
+	}
+
+	return false;
 }
 
-static Client *next_position_zone_candidate(uint32_t zone_mask, Client *after) {
+static bool focuszone_candidate(Client *c, const char *zones) {
+	return c && selmon && c->mon == selmon && !c->iskilling &&
+		   !c->isminimized && !c->isunglobal && client_surface(c)->mapped &&
+		   !client_is_unmanaged(c) && VISIBLEON(c, selmon) &&
+		   zones_client_has_valid_zone(c) &&
+		   focuszone_token_matches(zones, c->zone_name);
+}
+
+static Client *next_focuszone_candidate(const char *zones, Client *after) {
 	Client *c = NULL;
 	bool seen_after = after == NULL;
 
 	wl_list_for_each(c, &fstack, flink) {
-		if (!position_focus_candidate(c, zone_mask))
+		if (!focuszone_candidate(c, zones))
 			continue;
 		if (seen_after)
 			return c;
@@ -216,7 +255,7 @@ static Client *next_position_zone_candidate(uint32_t zone_mask, Client *after) {
 	}
 
 	wl_list_for_each(c, &fstack, flink) {
-		if (position_focus_candidate(c, zone_mask))
+		if (focuszone_candidate(c, zones))
 			return c;
 	}
 
@@ -226,22 +265,19 @@ static Client *next_position_zone_candidate(uint32_t zone_mask, Client *after) {
 int32_t focuszone(const Arg *arg) {
 	Client *current = NULL;
 	Client *target = NULL;
-	uint32_t zone_mask = 0;
 
 	if (!selmon || !arg || !arg->v)
 		return 0;
-
-	zone_mask = position_zone_mask_from_string(arg->v);
-	if (!zone_mask)
+	if (arg->v[0] == '\0')
 		return 0;
 
 	current = selmon->sel;
-	target = next_position_zone_candidate(zone_mask, NULL);
+	target = next_focuszone_candidate(arg->v, NULL);
 	if (!target)
 		return 0;
 
 	if (current == target)
-		target = next_position_zone_candidate(zone_mask, current);
+		target = next_focuszone_candidate(arg->v, current);
 
 	if (!target)
 		return 0;
@@ -637,6 +673,8 @@ int32_t setlayout(const Arg *arg) {
 	for (jk = 0; jk < LENGTH(layouts); jk++) {
 		if (strcmp(layouts[jk].name, arg->v) == 0) {
 			selmon->pertag->ltidxs[selmon->pertag->curtag] = &layouts[jk];
+			if (layouts[jk].id == ZONES)
+				zones_assign_missing_visible(selmon);
 			clear_fullscreen_and_maximized_state(selmon);
 			arrange(selmon, false, false);
 			printstatus(IPC_WATCH_ARRANGGE);
@@ -1144,6 +1182,8 @@ int32_t switch_layout(const Arg *arg) {
 				MANGO_MAX(strlen(layouts[ji].name), strlen(target_layout_name));
 			if (strncmp(layouts[ji].name, target_layout_name, len) == 0) {
 				selmon->pertag->ltidxs[selmon->pertag->curtag] = &layouts[ji];
+				if (layouts[ji].id == ZONES)
+					zones_assign_missing_visible(selmon);
 
 				break;
 			}
@@ -1159,6 +1199,8 @@ int32_t switch_layout(const Arg *arg) {
 				   selmon->pertag->ltidxs[selmon->pertag->curtag]->name) == 0) {
 			selmon->pertag->ltidxs[selmon->pertag->curtag] =
 				jk == LENGTH(layouts) - 1 ? &layouts[0] : &layouts[jk + 1];
+			if (selmon->pertag->ltidxs[selmon->pertag->curtag]->id == ZONES)
+				zones_assign_missing_visible(selmon);
 			clear_fullscreen_and_maximized_state(selmon);
 			arrange(selmon, false, false);
 			printstatus(IPC_WATCH_ARRANGGE);
@@ -2101,11 +2143,11 @@ int32_t focusid(const Arg *arg) {
 	return 0;
 }
 
-int32_t placezone(const Arg *arg) {
+int32_t movetozone(const Arg *arg) {
 	Client *c = NULL;
-	uint32_t zone = POS_ZONE_NONE;
+	const ConfigZone *zone = NULL;
 	int32_t i = 0;
-	const Layout *position_layout = NULL;
+	const Layout *zones_layout = NULL;
 
 	if (!selmon || selmon->isoverview || !arg || !arg->v)
 		return 0;
@@ -2116,14 +2158,15 @@ int32_t placezone(const Arg *arg) {
 	if (client_is_unmanaged(c) || c->isfullscreen || c->ismaximizescreen)
 		return 0;
 
-	zone = parse_position_zone(arg->v);
-	if (zone == POS_ZONE_NONE)
+	zone = zones_find(arg->v);
+	if (!zone)
 		return 0;
 
-	c->position_zone = zone;
+	if (!zones_set_client_zone(c, zone))
+		return 0;
 
 	if (c->isfloating) {
-		c->geom = position_align_floating(c, zone);
+		c->geom = zones_align_floating(c, zone);
 		c->iscustompos = 1;
 		c->float_geom = c->geom;
 		resize(c, c->geom, 0);
@@ -2132,18 +2175,19 @@ int32_t placezone(const Arg *arg) {
 	}
 
 	for (i = 0; i < LENGTH(layouts); i++) {
-		if (layouts[i].id == POSITION) {
-			position_layout = &layouts[i];
+		if (layouts[i].id == ZONES) {
+			zones_layout = &layouts[i];
 			break;
 		}
 	}
 
-	if (!position_layout)
+	if (!zones_layout)
 		return 0;
 
-	if (c->mon->pertag->ltidxs[c->mon->pertag->curtag]->id != POSITION)
-		c->mon->pertag->ltidxs[c->mon->pertag->curtag] = position_layout;
+	if (c->mon->pertag->ltidxs[c->mon->pertag->curtag]->id != ZONES)
+		c->mon->pertag->ltidxs[c->mon->pertag->curtag] = zones_layout;
 
+	zones_assign_missing_visible(c->mon);
 	arrange(c->mon, false, false);
 	focusclient(c, 1);
 	return 0;

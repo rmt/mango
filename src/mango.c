@@ -483,7 +483,7 @@ struct Client {
 	float grid_row_per;
 	float old_grid_col_per;
 	float old_grid_row_per;
-	uint32_t position_zone;
+	char *zone_name;
 	int32_t grid_col_idx;
 	int32_t grid_row_idx;
 	uint32_t id;
@@ -1161,7 +1161,7 @@ static struct wl_event_source *sync_keymap;
 #include "animation/common.h"
 #include "animation/layer.h"
 #include "animation/tag.h"
-#include "layout/position.h"
+#include "layout/zones.h"
 #include "dispatch/bind_define.h"
 #include "ext-protocol/all.h"
 #include "fetch/fetch.h"
@@ -4001,6 +4001,8 @@ destroynotify(struct wl_listener *listener, void *data) {
 	if (xdg_surface && xdg_surface->data == c)
 		xdg_surface->data = NULL;
 
+	free(c->zone_name);
+	c->zone_name = NULL;
 	free(c);
 }
 
@@ -5984,10 +5986,11 @@ void setmon(Client *c, Monitor *m, uint32_t newtags, bool focus) {
 		reset_foreign_tolevel(c, oldmon, m);
 		resize(c, c->geom, 0);
 		client_reset_mon_tags(c, m, newtags);
-		if (c->position_zone == POS_ZONE_NONE && c->tags &&
-			m->pertag->ltidxs[get_tags_first_tag_num(c->tags)]->id ==
-				POSITION) {
-			c->position_zone = POS_ZONE_C;
+		if (!zones_client_has_valid_zone(c) && c->tags &&
+			m->pertag->ltidxs[get_tags_first_tag_num(c->tags)]->id == ZONES) {
+			const ConfigZone *zone = zones_default_for_monitor(m);
+			if (zone)
+				zones_set_client_zone(c, zone);
 		}
 		check_match_tag_floating_rule(c, m);
 		setfloating(c, c->isfloating);
