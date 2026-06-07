@@ -83,7 +83,7 @@ Floating windows can be assigned to zones. A floating window with a valid zone a
 - it is aligned to its assigned zone when first docked, when redocked to a different zone, or when floating assignment is recomputed on entering zones
 - it is stacked with normal tiled content unless `toggleoverlay` is set
 
-This is useful for large or irregular windows inside a zone. If a docked floating window is larger than its zone, it may overlap neighboring zones, but it should not permanently obscure overlapping tiled windows unless it is focused or explicitly overlayed.
+This is useful for large or irregular windows inside a zone. If a docked floating window is larger than its zone, it may overlap neighboring zones. When focus moves to another zone, Mango leaves the old docked floating window in place so each zone can retain its visible top window. When focus moves within the same zone, the old docked floating window may be lowered to reveal the newly focused client. Use `toggleoverlay` for explicit always-on-top behavior.
 
 When a client is turned floating while in `zones`, for example via `togglefloating`, Mango explicitly aligns it to its current/default zone.
 

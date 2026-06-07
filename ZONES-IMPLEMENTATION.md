@@ -73,6 +73,10 @@ Added `client_reparent_by_stack()` to centralize stack/layer policy for overlay,
 
 Changed `movetozone` so tiled clients do not mutate `zone_name` until the command has located the zones layout and is ready to enter/apply it. Floating clients still assign directly because they do not need to switch layouts.
 
+### focus behavior for docked floating windows
+
+Docked floating windows are only automatically lowered when focus moves to another client in the same zone. When focus moves to another zone, the previously focused docked floating window is left in place so each zone can retain its visible top window without requiring per-zone scene clipping.
+
 ## Implementation details
 
 The follow-up changes refine zones semantics, especially around layout transitions, floating windows, drag/drop, and stacking.
@@ -206,9 +210,9 @@ Reasoning: the problem was not that floating windows needed another independent 
 
 ### 7. Focus behavior for docked floating windows
 
-Focused docked floating windows may be raised through existing focus/lift behavior. When focus moves away from a docked floating window that is not overlayed, it is lowered again.
+Focused docked floating windows may be raised through existing focus/lift behavior. When focus moves to another client in the same zone, the old docked floating window is lowered so the new same-zone focus can be revealed. When focus moves to a different zone, the old docked floating window is not lowered.
 
-Reasoning: this allows a docked floating window to be usable while focused, without turning it into a permanent top-layer obstruction.
+Reasoning: this lets each zone retain its own visible top docked floating window without adding clipping or true per-zone scene stacking. It is a simpler compromise than making only the zone-internal portion of an oversized floating window visible.
 
 ## Config and actions
 

@@ -44,6 +44,11 @@ static bool zones_client_is_docked_floating(Client *c) {
 	return c && c->isfloating && zones_client_has_valid_zone(c);
 }
 
+static bool zones_clients_share_zone(Client *a, Client *b) {
+	return zones_client_has_valid_zone(a) && zones_client_has_valid_zone(b) &&
+		   zones_name_equals(a->zone_name, b->zone_name);
+}
+
 static bool zones_set_client_zone(Client *c, const ConfigZone *zone) {
 	char *name = NULL;
 

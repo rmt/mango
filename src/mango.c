@@ -4147,7 +4147,8 @@ void focusclient(Client *c, int32_t lift) {
 		return;
 
 	if (selmon && selmon->sel && selmon->sel != c &&
-		zones_client_is_docked_floating(selmon->sel) && !selmon->sel->isoverlay)
+		zones_client_is_docked_floating(selmon->sel) && !selmon->sel->isoverlay &&
+		zones_clients_share_zone(selmon->sel, c))
 		wlr_scene_node_lower_to_bottom(&selmon->sel->scene->node);
 
 	/* Raise client in stacking order if requested */
