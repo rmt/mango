@@ -466,7 +466,11 @@ int32_t moveresize(const Arg *arg) {
 		return 0;
 	}
 	if (grabc->isfloating == 0 && arg->ui == CurMove) {
-		grabc->drag_to_tile = true;
+		const Layout *layout =
+			grabc->mon->pertag->ltidxs[grabc->mon->pertag->curtag];
+
+		grabc->drag_to_zone = layout && layout->id == ZONES;
+		grabc->drag_to_tile = !grabc->drag_to_zone;
 		exit_scroller_stack(grabc);
 		setfloating(grabc, 1);
 		grabc->drag_tile_float_backup_geom = grabc->float_geom;
@@ -665,6 +669,22 @@ int32_t restore_minimized(const Arg *arg) {
 	return 0;
 }
 
+static void set_monitor_layout(Monitor *m, const Layout *layout) {
+	const Layout *old_layout;
+
+	if (!m || !layout)
+		return;
+
+	old_layout = m->pertag->ltidxs[m->pertag->curtag];
+	if (old_layout && old_layout->id == ZONES && layout->id != ZONES)
+		zones_clear_visible(m);
+
+	m->pertag->ltidxs[m->pertag->curtag] = layout;
+
+	if ((!old_layout || old_layout->id != ZONES) && layout->id == ZONES)
+		zones_assign_visible_by_geometry(m, true);
+}
+
 int32_t setlayout(const Arg *arg) {
 	int32_t jk;
 	if (!selmon)
@@ -672,9 +692,7 @@ int32_t setlayout(const Arg *arg) {
 
 	for (jk = 0; jk < LENGTH(layouts); jk++) {
 		if (strcmp(layouts[jk].name, arg->v) == 0) {
-			selmon->pertag->ltidxs[selmon->pertag->curtag] = &layouts[jk];
-			if (layouts[jk].id == ZONES)
-				zones_assign_missing_visible(selmon);
+			set_monitor_layout(selmon, &layouts[jk]);
 			clear_fullscreen_and_maximized_state(selmon);
 			arrange(selmon, false, false);
 			printstatus(IPC_WATCH_ARRANGGE);
@@ -1181,10 +1199,7 @@ int32_t switch_layout(const Arg *arg) {
 			len =
 				MANGO_MAX(strlen(layouts[ji].name), strlen(target_layout_name));
 			if (strncmp(layouts[ji].name, target_layout_name, len) == 0) {
-				selmon->pertag->ltidxs[selmon->pertag->curtag] = &layouts[ji];
-				if (layouts[ji].id == ZONES)
-					zones_assign_missing_visible(selmon);
-
+				set_monitor_layout(selmon, &layouts[ji]);
 				break;
 			}
 		}
@@ -1197,10 +1212,9 @@ int32_t switch_layout(const Arg *arg) {
 	for (jk = 0; jk < LENGTH(layouts); jk++) {
 		if (strcmp(layouts[jk].name,
 				   selmon->pertag->ltidxs[selmon->pertag->curtag]->name) == 0) {
-			selmon->pertag->ltidxs[selmon->pertag->curtag] =
-				jk == LENGTH(layouts) - 1 ? &layouts[0] : &layouts[jk + 1];
-			if (selmon->pertag->ltidxs[selmon->pertag->curtag]->id == ZONES)
-				zones_assign_missing_visible(selmon);
+			set_monitor_layout(selmon,
+							   jk == LENGTH(layouts) - 1 ? &layouts[0]
+													  : &layouts[jk + 1]);
 			clear_fullscreen_and_maximized_state(selmon);
 			arrange(selmon, false, false);
 			printstatus(IPC_WATCH_ARRANGGE);
@@ -1529,11 +1543,13 @@ int32_t toggleoverlay(const Arg *arg) {
 	if (c->isoverlay) {
 		wlr_scene_node_reparent(&c->scene->node, layers[LyrOverlay]);
 		wlr_scene_node_raise_to_top(&c->scene->node);
-	} else if (client_should_overtop(c) && c->isfloating) {
-		wlr_scene_node_reparent(&c->scene->node, layers[LyrTop]);
 	} else {
-		wlr_scene_node_reparent(&c->scene->node,
-								layers[c->isfloating ? LyrTop : LyrTile]);
+		wlr_scene_node_reparent(
+			&c->scene->node,
+			layers[(client_should_overtop(c) ||
+						(c->isfloating && !zones_client_is_docked_floating(c)))
+					   ? LyrTop
+					   : LyrTile]);
 	}
 	setborder_color(c);
 	return 0;
@@ -2169,6 +2185,8 @@ int32_t movetozone(const Arg *arg) {
 		c->geom = zones_align_floating(c, zone);
 		c->iscustompos = 1;
 		c->float_geom = c->geom;
+		wlr_scene_node_reparent(
+			&c->scene->node, c->isoverlay ? layers[LyrOverlay] : layers[LyrTile]);
 		resize(c, c->geom, 0);
 		focusclient(c, 1);
 		return 0;

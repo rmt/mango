@@ -40,6 +40,10 @@ static bool zones_client_has_valid_zone(Client *c) {
 	return c && c->zone_name && zones_find(c->zone_name);
 }
 
+static bool zones_client_is_docked_floating(Client *c) {
+	return c && c->isfloating && zones_client_has_valid_zone(c);
+}
+
 static bool zones_set_client_zone(Client *c, const ConfigZone *zone) {
 	char *name = NULL;
 
@@ -169,6 +173,32 @@ static int32_t zones_intersection_area(struct wlr_box a, struct wlr_box b) {
 	return (x2 - x1) * (y2 - y1);
 }
 
+static const ConfigZone *zones_pick_for_box(Monitor *m, struct wlr_box geom) {
+	const ConfigZone *best_zone = NULL;
+	int32_t i;
+	int32_t best_overlap = 0;
+	int64_t best_zone_area = INT64_MAX;
+
+	if (!m)
+		return NULL;
+
+	for (i = 0; i < config.zones_count; i++) {
+		const ConfigZone *zone = &config.zones[i];
+		struct wlr_box box = zones_box(m, zone);
+		int32_t overlap = zones_intersection_area(geom, box);
+		int64_t area = (int64_t)box.width * box.height;
+
+		if (overlap > best_overlap ||
+			(overlap == best_overlap && overlap > 0 && area < best_zone_area)) {
+			best_zone = zone;
+			best_overlap = overlap;
+			best_zone_area = area;
+		}
+	}
+
+	return best_zone;
+}
+
 static int32_t zones_visible_tiled_occupancy(Monitor *m, const ConfigZone *zone) {
 	Client *c;
 	int32_t count = 0;
@@ -183,7 +213,7 @@ static int32_t zones_visible_tiled_occupancy(Monitor *m, const ConfigZone *zone)
 	return count;
 }
 
-static void zones_assign_missing_visible(Monitor *m) {
+static void zones_assign_visible_by_geometry(Monitor *m, bool force) {
 	Client *c;
 	int32_t i;
 
@@ -194,30 +224,58 @@ static void zones_assign_missing_visible(Monitor *m) {
 		const ConfigZone *best_zone = NULL;
 		int32_t best_overlap = -1;
 		int32_t best_occupancy = INT_MAX;
+		int64_t best_zone_area = INT64_MAX;
 
-		if (!VISIBLEON(c, m) || !ISTILED(c) || client_is_unmanaged(c) ||
+		if (!VISIBLEON(c, m) || client_is_unmanaged(c) ||
 			c->iskilling || c->isfullscreen || c->ismaximizescreen ||
-			zones_client_has_valid_zone(c))
+			(!force && zones_client_has_valid_zone(c)))
 			continue;
 
 		for (i = 0; i < config.zones_count; i++) {
 			const ConfigZone *zone = &config.zones[i];
-			int32_t overlap =
-				zones_intersection_area(c->geom, zones_box(m, zone));
+			struct wlr_box zone_box = zones_box(m, zone);
+			int32_t overlap = zones_intersection_area(c->geom, zone_box);
 			int32_t occupancy = zones_visible_tiled_occupancy(m, zone);
+			int64_t zone_area = (int64_t)zone_box.width * zone_box.height;
 
 			if (overlap > best_overlap ||
-				(overlap == best_overlap && occupancy < best_occupancy)) {
+				(overlap == best_overlap && zone_area < best_zone_area) ||
+				(overlap == best_overlap && zone_area == best_zone_area &&
+				 occupancy < best_occupancy)) {
 				best_zone = zone;
 				best_overlap = overlap;
 				best_occupancy = occupancy;
+				best_zone_area = zone_area;
 			}
 		}
 
 		if (!best_zone || best_overlap == 0)
 			best_zone = zones_default_for_monitor(m);
-		if (best_zone)
-			zones_set_client_zone(c, best_zone);
+		if (best_zone && zones_set_client_zone(c, best_zone) && c->isfloating &&
+			!c->isoverlay)
+			wlr_scene_node_reparent(&c->scene->node, layers[LyrTile]);
+	}
+}
+
+static void zones_assign_missing_visible(Monitor *m) {
+	zones_assign_visible_by_geometry(m, false);
+}
+
+static void zones_clear_visible(Monitor *m) {
+	Client *c;
+
+	if (!m)
+		return;
+
+	wl_list_for_each(c, &clients, link) {
+		if (!VISIBLEON(c, m) || !c->zone_name)
+			continue;
+
+		free(c->zone_name);
+		c->zone_name = NULL;
+
+		if (c->isfloating && !c->isoverlay)
+			wlr_scene_node_reparent(&c->scene->node, layers[LyrTop]);
 	}
 }
 
