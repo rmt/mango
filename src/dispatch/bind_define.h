@@ -463,18 +463,24 @@ int32_t moveresize(const Arg *arg) {
 		grabc = NULL;
 		return 0;
 	}
-	if (grabc->isfloating == 0 && arg->ui == CurMove) {
+	if (arg->ui == CurMove) {
 		const Layout *layout =
 			grabc->mon->pertag->ltidxs[grabc->mon->pertag->curtag];
 
-		grabc->drag_to_zone = layout && layout->id == ZONES;
-		grabc->drag_to_tile = !grabc->drag_to_zone;
-		exit_scroller_stack(grabc);
-		setfloating(grabc, 1);
-		grabc->drag_tile_float_backup_geom = grabc->float_geom;
-		grabc->old_stack_inner_per = 0.0f;
-		grabc->old_master_inner_per = 0.0f;
-		set_size_per(grabc->mon, grabc);
+		if (grabc->isfloating && layout && layout->id == ZONES &&
+			zones_client_has_valid_zone(grabc)) {
+			grabc->drag_to_zone = true;
+			grabc->drag_to_tile = false;
+		} else if (grabc->isfloating == 0) {
+			grabc->drag_to_zone = layout && layout->id == ZONES;
+			grabc->drag_to_tile = !grabc->drag_to_zone;
+			exit_scroller_stack(grabc);
+			setfloating(grabc, 1);
+			grabc->drag_tile_float_backup_geom = grabc->float_geom;
+			grabc->old_stack_inner_per = 0.0f;
+			grabc->old_master_inner_per = 0.0f;
+			set_size_per(grabc->mon, grabc);
+		}
 	}
 
 	if (grabc && grabc->drag_to_tile && config.drag_tile_small) {

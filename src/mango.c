@@ -2348,8 +2348,25 @@ void place_drag_tile_client(Client *c) {
 		: NULL;
 
 	if (c && c->drag_to_zone && layout && layout->id == ZONES) {
-		if (dropzone)
-			zones_set_client_zone(c, (const ConfigZone *)dropzone);
+		const ConfigZone *zone = (const ConfigZone *)dropzone;
+		bool same_zone =
+			zone && c->zone_name && zones_name_equals(c->zone_name, zone->name);
+
+		if (c->isfloating) {
+			if (zone && !same_zone && zones_set_client_zone(c, zone)) {
+				c->geom = zones_align_floating(c, zone);
+				c->iscustompos = 1;
+				resize(c, c->geom, 0);
+			}
+			c->float_geom = c->geom;
+			if (!c->isoverlay)
+				wlr_scene_node_reparent(&c->scene->node, layers[LyrTile]);
+			hide_zone_droparea();
+			return;
+		}
+
+		if (zone)
+			zones_set_client_zone(c, zone);
 		setfloating(c, 0);
 		hide_zone_droparea();
 		return;
@@ -2534,7 +2551,8 @@ bool handle_buttonpress(struct wlr_pointer_button_event *event) {
 			if ((tmpc->drag_to_tile && config.drag_tile_to_tile) ||
 				tmpc->drag_to_zone) {
 				place_drag_tile_client(tmpc);
-				tmpc->float_geom = tmpc->drag_tile_float_backup_geom;
+				if (tmpc->drag_to_tile)
+					tmpc->float_geom = tmpc->drag_tile_float_backup_geom;
 			} else {
 				apply_window_snap(tmpc);
 			}
