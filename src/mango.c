@@ -739,6 +739,8 @@ static void setcursorshape(struct wl_listener *listener, void *data);
 static void focusclient(Client *c, int32_t lift);
 
 static void setborder_color(Client *c);
+static void client_reparent_by_stack(Client *c, bool force_top,
+									 bool raise_overlay);
 static Client *focustop(Monitor *m);
 static void fullscreennotify(struct wl_listener *listener, void *data);
 static void gpureset(struct wl_listener *listener, void *data);
@@ -1868,10 +1870,8 @@ void applyrules(Client *c) {
 	}
 
 	// apply overlay rule
-	if (c->isoverlay && c->scene) {
-		wlr_scene_node_reparent(&c->scene->node, layers[LyrOverlay]);
-		wlr_scene_node_raise_to_top(&c->scene->node);
-	}
+	if (c->isoverlay && c->scene)
+		client_reparent_by_stack(c, false, true);
 }
 
 void arrangelayer(Monitor *m, struct wl_list *list, struct wlr_box *usable_area,
@@ -2289,6 +2289,26 @@ void hold_end(struct wl_listener *listener, void *data) {
 										  event->time_msec, event->cancelled);
 }
 
+static void client_reparent_by_stack(Client *c, bool force_top,
+									 bool raise_overlay) {
+	if (!c || !c->scene)
+		return;
+
+	if (c->isoverlay) {
+		wlr_scene_node_reparent(&c->scene->node, layers[LyrOverlay]);
+		if (raise_overlay)
+			wlr_scene_node_raise_to_top(&c->scene->node);
+		return;
+	}
+
+	wlr_scene_node_reparent(
+		&c->scene->node,
+		layers[force_top || client_should_overtop(c) ||
+					   (c->isfloating && !zones_client_is_docked_floating(c))
+			   ? LyrTop
+			   : LyrTile]);
+}
+
 static void hide_zone_droparea(void) {
 	dropzone = NULL;
 	if (!zone_droparea)
@@ -2364,8 +2384,7 @@ void place_drag_tile_client(Client *c) {
 				resize(c, c->geom, 0);
 			}
 			c->float_geom = c->geom;
-			if (!c->isoverlay)
-				wlr_scene_node_reparent(&c->scene->node, layers[LyrTile]);
+			client_reparent_by_stack(c, false, false);
 			hide_zone_droparea();
 			return;
 		}
@@ -5783,16 +5802,7 @@ setfloating(Client *c, int32_t floating) {
 		}
 	}
 
-	if (c->isoverlay) {
-		wlr_scene_node_reparent(&c->scene->node, layers[LyrOverlay]);
-	} else {
-		wlr_scene_node_reparent(
-			&c->scene->node,
-			layers[(client_should_overtop(c) ||
-						(c->isfloating && !zones_client_is_docked_floating(c)))
-					   ? LyrTop
-					   : LyrTile]);
-	}
+	client_reparent_by_stack(c, false, false);
 
 	if (!c->force_fakemaximize)
 		client_set_maximized(c, false);
@@ -5870,12 +5880,7 @@ void setmaximizescreen(Client *c, int32_t maximizescreen, bool rearrange) {
 			setfloating(c, 1);
 	}
 
-	wlr_scene_node_reparent(
-		&c->scene->node,
-		layers[(client_should_overtop(c) ||
-				(c->isfloating && !zones_client_is_docked_floating(c)))
-				   ? LyrTop
-				   : LyrTile]);
+	client_reparent_by_stack(c, false, false);
 
 	if (!c->force_fakemaximize && !c->ismaximizescreen) {
 		client_set_maximized(c, false);
@@ -5946,16 +5951,7 @@ void setfullscreen(Client *c, int32_t fullscreen,
 			setfloating(c, 1);
 	}
 
-	if (c->isoverlay) {
-		wlr_scene_node_reparent(&c->scene->node, layers[LyrOverlay]);
-	} else {
-		wlr_scene_node_reparent(
-			&c->scene->node,
-			layers[fullscreen || client_should_overtop(c) ||
-						   (c->isfloating && !zones_client_is_docked_floating(c))
-					   ? LyrTop
-					   : LyrTile]);
-	}
+	client_reparent_by_stack(c, fullscreen, false);
 
 	if (rearrange)
 		arrange(c->mon, false, false);

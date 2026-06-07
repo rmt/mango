@@ -258,8 +258,7 @@ static void zones_assign_visible_by_geometry(Monitor *m, bool force) {
 			c->geom = zones_align_floating(c, best_zone);
 			c->iscustompos = 1;
 			c->float_geom = c->geom;
-			if (!c->isoverlay)
-				wlr_scene_node_reparent(&c->scene->node, layers[LyrTile]);
+			client_reparent_by_stack(c, false, false);
 			resize(c, c->geom, 0);
 		}
 	}
@@ -282,8 +281,7 @@ static void zones_clear_visible(Monitor *m) {
 		free(c->zone_name);
 		c->zone_name = NULL;
 
-		if (c->isfloating && !c->isoverlay)
-			wlr_scene_node_reparent(&c->scene->node, layers[LyrTop]);
+		client_reparent_by_stack(c, false, false);
 	}
 }
 

@@ -1552,17 +1552,7 @@ int32_t toggleoverlay(const Arg *arg) {
 
 	c->isoverlay ^= 1;
 
-	if (c->isoverlay) {
-		wlr_scene_node_reparent(&c->scene->node, layers[LyrOverlay]);
-		wlr_scene_node_raise_to_top(&c->scene->node);
-	} else {
-		wlr_scene_node_reparent(
-			&c->scene->node,
-			layers[(client_should_overtop(c) ||
-						(c->isfloating && !zones_client_is_docked_floating(c)))
-					   ? LyrTop
-					   : LyrTile]);
-	}
+	client_reparent_by_stack(c, false, true);
 	setborder_color(c);
 	return 0;
 }
@@ -2197,8 +2187,7 @@ int32_t movetozone(const Arg *arg) {
 		c->geom = zones_align_floating(c, zone);
 		c->iscustompos = 1;
 		c->float_geom = c->geom;
-		wlr_scene_node_reparent(
-			&c->scene->node, c->isoverlay ? layers[LyrOverlay] : layers[LyrTile]);
+		client_reparent_by_stack(c, false, true);
 		resize(c, c->geom, 0);
 		focusclient(c, 1);
 		return 0;
