@@ -700,6 +700,8 @@ int32_t setlayout(const Arg *arg) {
 		if (strcmp(layouts[jk].name, arg->v) == 0) {
 			set_monitor_layout(selmon, &layouts[jk]);
 			clear_fullscreen_and_maximized_state(selmon);
+			if (selmon->pertag->ltidxs[selmon->pertag->curtag]->id == ZONES)
+				zones_assign_missing_visible(selmon);
 			arrange(selmon, false, false);
 			printstatus(IPC_WATCH_ARRANGGE);
 			return 0;
@@ -1210,6 +1212,8 @@ int32_t switch_layout(const Arg *arg) {
 			}
 		}
 		clear_fullscreen_and_maximized_state(selmon);
+		if (selmon->pertag->ltidxs[selmon->pertag->curtag]->id == ZONES)
+			zones_assign_missing_visible(selmon);
 		arrange(selmon, false, false);
 		printstatus(IPC_WATCH_ARRANGGE);
 		return 0;
@@ -1222,6 +1226,8 @@ int32_t switch_layout(const Arg *arg) {
 							   jk == LENGTH(layouts) - 1 ? &layouts[0]
 													  : &layouts[jk + 1]);
 			clear_fullscreen_and_maximized_state(selmon);
+			if (selmon->pertag->ltidxs[selmon->pertag->curtag]->id == ZONES)
+				zones_assign_missing_visible(selmon);
 			arrange(selmon, false, false);
 			printstatus(IPC_WATCH_ARRANGGE);
 			return 0;
