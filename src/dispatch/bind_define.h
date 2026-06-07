@@ -2180,10 +2180,9 @@ int32_t movetozone(const Arg *arg) {
 	if (!zone)
 		return 0;
 
-	if (!zones_set_client_zone(c, zone))
-		return 0;
-
 	if (c->isfloating) {
+		if (!zones_set_client_zone(c, zone))
+			return 0;
 		c->geom = zones_align_floating(c, zone);
 		c->iscustompos = 1;
 		c->float_geom = c->geom;
@@ -2208,6 +2207,8 @@ int32_t movetozone(const Arg *arg) {
 		if (!zones_set_client_zone(c, zone))
 			return 0;
 	} else {
+		if (!zones_set_client_zone(c, zone))
+			return 0;
 		zones_assign_missing_visible(c->mon);
 	}
 	arrange(c->mon, false, false);
