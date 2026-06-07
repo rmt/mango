@@ -19,14 +19,17 @@ static void client_swap_layout_properties(Client *c1, Client *c2) {
 	double master_inner_per = c1->master_inner_per;
 	double master_mfact_per = c1->master_mfact_per;
 	double stack_inner_per = c1->stack_inner_per;
+	char *zone_name = c1->zone_name;
 
 	c1->master_inner_per = c2->master_inner_per;
 	c1->master_mfact_per = c2->master_mfact_per;
 	c1->stack_inner_per = c2->stack_inner_per;
+	c1->zone_name = c2->zone_name;
 
 	c2->master_inner_per = master_inner_per;
 	c2->master_mfact_per = master_mfact_per;
 	c2->stack_inner_per = stack_inner_per;
+	c2->zone_name = zone_name;
 }
 
 static void client_swap_monitors_and_tags(Client *c1, Client *c2) {
