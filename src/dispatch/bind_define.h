@@ -471,9 +471,11 @@ int32_t moveresize(const Arg *arg) {
 			zones_client_has_valid_zone(grabc)) {
 			grabc->drag_to_zone = true;
 			grabc->drag_to_tile = false;
+			grabc->drag_was_tiled = false;
 		} else if (grabc->isfloating == 0) {
 			grabc->drag_to_zone = layout && layout->id == ZONES;
 			grabc->drag_to_tile = !grabc->drag_to_zone;
+			grabc->drag_was_tiled = true;
 			exit_scroller_stack(grabc);
 			setfloating(grabc, 1);
 			grabc->drag_tile_float_backup_geom = grabc->float_geom;

@@ -453,6 +453,7 @@ struct Client {
 	bool is_clip_to_hide;
 	bool drag_to_tile;
 	bool drag_to_zone;
+	bool drag_was_tiled;
 	bool scratchpad_switching_mon;
 	bool fake_no_border;
 	int32_t nofocus;
@@ -2348,12 +2349,16 @@ void place_drag_tile_client(Client *c) {
 		: NULL;
 
 	if (c && c->drag_to_zone && layout && layout->id == ZONES) {
-		const ConfigZone *zone = (const ConfigZone *)dropzone;
-		bool same_zone =
-			zone && c->zone_name && zones_name_equals(c->zone_name, zone->name);
+		const ConfigZone *drop_zone = (const ConfigZone *)dropzone;
+		const ConfigZone *zone = drop_zone;
+		bool same_zone = zone && c->zone_name &&
+						 zones_name_equals(c->zone_name, zone->name);
 
-		if (c->isfloating) {
-			if (zone && !same_zone && zones_set_client_zone(c, zone)) {
+		if (!c->drag_was_tiled && c->isfloating) {
+			if (!zone)
+				zone = zones_client_has_valid_zone(c) ? zones_find(c->zone_name)
+												 : zones_default_for_monitor(c->mon);
+			if (zone && (!same_zone || !drop_zone) && zones_set_client_zone(c, zone)) {
 				c->geom = zones_align_floating(c, zone);
 				c->iscustompos = 1;
 				resize(c, c->geom, 0);
@@ -2550,14 +2555,16 @@ bool handle_buttonpress(struct wlr_pointer_button_event *event) {
 			last_apply_drap_time = 0;
 			if ((tmpc->drag_to_tile && config.drag_tile_to_tile) ||
 				tmpc->drag_to_zone) {
+				bool restore_float_geom = tmpc->drag_to_tile || tmpc->drag_was_tiled;
 				place_drag_tile_client(tmpc);
-				if (tmpc->drag_to_tile)
+				if (restore_float_geom)
 					tmpc->float_geom = tmpc->drag_tile_float_backup_geom;
 			} else {
 				apply_window_snap(tmpc);
 			}
 			tmpc->drag_to_tile = false;
 			tmpc->drag_to_zone = false;
+			tmpc->drag_was_tiled = false;
 			hide_zone_droparea();
 			if (dropc) {
 				dropc->enable_drop_area_draw = false;
@@ -4734,6 +4741,7 @@ void init_client_properties(Client *c) {
 	c->is_pending_open_animation = true;
 	c->drag_to_tile = false;
 	c->drag_to_zone = false;
+	c->drag_was_tiled = false;
 	c->scratchpad_switching_mon = false;
 	c->fake_no_border = false;
 	c->focused_opacity = config.focused_opacity;
