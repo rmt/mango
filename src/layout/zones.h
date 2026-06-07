@@ -251,9 +251,14 @@ static void zones_assign_visible_by_geometry(Monitor *m, bool force) {
 
 		if (!best_zone || best_overlap == 0)
 			best_zone = zones_default_for_monitor(m);
-		if (best_zone && zones_set_client_zone(c, best_zone) && c->isfloating &&
-			!c->isoverlay)
-			wlr_scene_node_reparent(&c->scene->node, layers[LyrTile]);
+		if (best_zone && zones_set_client_zone(c, best_zone) && c->isfloating) {
+			c->geom = zones_align_floating(c, best_zone);
+			c->iscustompos = 1;
+			c->float_geom = c->geom;
+			if (!c->isoverlay)
+				wlr_scene_node_reparent(&c->scene->node, layers[LyrTile]);
+			resize(c, c->geom, 0);
+		}
 	}
 }
 
