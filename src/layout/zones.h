@@ -93,12 +93,15 @@ static struct wlr_box zones_monitor_base(Monitor *m) {
 }
 
 static struct wlr_box zones_box(Monitor *m, const ConfigZone *zone) {
-	struct wlr_box base = zones_monitor_base(m);
-	struct wlr_box box = base;
+	struct wlr_box base;
+	struct wlr_box box;
 	int32_t max_x, max_y;
 
 	if (!m || !zone)
 		return (struct wlr_box){0};
+
+	base = zones_monitor_base(m);
+	box = base;
 
 	box.x = base.x + (int32_t)round(base.width * zone->x);
 	box.y = base.y + (int32_t)round(base.height * zone->y);
