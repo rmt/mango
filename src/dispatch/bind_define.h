@@ -2200,10 +2200,13 @@ int32_t movetozone(const Arg *arg) {
 	if (!zones_layout)
 		return 0;
 
-	if (c->mon->pertag->ltidxs[c->mon->pertag->curtag]->id != ZONES)
-		c->mon->pertag->ltidxs[c->mon->pertag->curtag] = zones_layout;
-
-	zones_assign_missing_visible(c->mon);
+	if (c->mon->pertag->ltidxs[c->mon->pertag->curtag]->id != ZONES) {
+		set_monitor_layout(c->mon, zones_layout);
+		if (!zones_set_client_zone(c, zone))
+			return 0;
+	} else {
+		zones_assign_missing_visible(c->mon);
+	}
 	arrange(c->mon, false, false);
 	focusclient(c, 1);
 	return 0;
