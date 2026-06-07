@@ -272,12 +272,10 @@ int32_t focuszone(const Arg *arg) {
 		return 0;
 
 	current = selmon->sel;
-	target = next_focuszone_candidate(arg->v, NULL);
-	if (!target)
-		return 0;
-
-	if (current == target)
+	if (focuszone_candidate(current, arg->v))
 		target = next_focuszone_candidate(arg->v, current);
+	else
+		target = next_focuszone_candidate(arg->v, NULL);
 
 	if (!target)
 		return 0;
