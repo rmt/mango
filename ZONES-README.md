@@ -60,7 +60,7 @@ bind=SUPER,bracketleft,focuszone,left
 bind=SUPER,space,focuszone,left|right
 ```
 
-Focuses/cycles through visible clients assigned to one or more zones. Multiple zones may be separated with `|`.
+Focuses/cycles through visible clients assigned to one or more zones. Multiple zones may be separated with `|`. If the currently focused client is already in the requested zone set, the action advances to the next matching client; otherwise it starts with the current top matching client.
 
 ### `movetozone`
 
@@ -72,7 +72,7 @@ Assigns the selected client to the named zone.
 
 - tiled clients are resized by the zones layout
 - floating clients keep their own size and are aligned to the zone
-- if the current layout is not `zones`, moving a tiled client to a zone switches the tag to the `zones` layout
+- if the current layout is not `zones`, moving a tiled client to a zone switches the tag to the `zones` layout through the normal zones layout-transition path, then preserves the explicitly requested target zone
 
 ## Floating and docked floating windows
 
@@ -80,14 +80,21 @@ Floating windows can be assigned to zones. A floating window with a valid zone a
 
 - it remains floating
 - it keeps its own size
-- it is aligned to its assigned zone
+- it is aligned to its assigned zone when first docked, when redocked to a different zone, or when floating assignment is recomputed on entering zones
 - it is stacked with normal tiled content unless `toggleoverlay` is set
 
 This is useful for large or irregular windows inside a zone. If a docked floating window is larger than its zone, it may overlap neighboring zones, but it should not permanently obscure overlapping tiled windows unless it is focused or explicitly overlayed.
 
 When a client is turned floating while in `zones`, for example via `togglefloating`, Mango explicitly aligns it to its current/default zone.
 
-Dragging a tiled window while in `zones` reassigns it to the zone under the cursor instead of performing the usual drag-to-tile insertion used by layouts such as scroller or dwindle. The drag uses temporary floating geometry internally, but dropping the window restores its original tiled state; dragging must not change whether the window is floating.
+Dragging a tiled window while in `zones` reassigns it to the best-overlap zone under the dragged window instead of performing the usual drag-to-tile insertion used by layouts such as scroller or dwindle. The drag uses temporary floating geometry internally, but dropping the window restores its original tiled state and previous floating-geometry metadata; dragging must not change whether the window is floating.
+
+Docked floating windows can also be dragged while in `zones`:
+
+- dropping within the same zone preserves the new manual position
+- dropping onto a different best-overlap zone updates the zone assignment and snap-aligns the window to that zone
+- dropping outside all zones snaps back to the current/default zone instead of leaving stale zone state
+- the window remains floating in all cases
 
 ## Overlay behavior
 

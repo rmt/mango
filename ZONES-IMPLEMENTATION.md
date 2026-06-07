@@ -1,6 +1,6 @@
 # Zones implementation notes
 
-This document describes the `zones` layout work in this branch, including commits from `c2015127ede3c161988174cfd95b6b1b0b6191f9` onward and the current uncommitted follow-up changes.
+This document describes the `zones` layout work in this branch, including commits from `c2015127ede3c161988174cfd95b6b1b0b6191f9` onward.
 
 ## Commit history covered
 
@@ -33,9 +33,49 @@ This is the point where the feature became a general tiling layout: users define
 
 Updated client-position swapping so `zone_name` follows the logical client placement. This keeps zones consistent when existing window exchange/swap operations are used.
 
-## Current uncommitted implementation changes
+### `e7b83fa` — refine zones docking and transitions
 
-The current working tree contains follow-up changes that refine zones semantics, especially around layout transitions, floating windows, drag/drop, and stacking.
+Introduced the main follow-up behavior for zones transitions, docked floating windows, best-overlap drag preview, and documentation.
+
+### `fba50be` — fix `focuszone` cycling
+
+Fixed `focuszone` so it preserves the original top-candidate behavior when the focused window is not in the target zone set, but cycles from the current client when the focused window is already in the requested zone set.
+
+### `6035df7` — align floating clients when assigning zones
+
+When entering zones or otherwise assigning visible clients by geometry, floating clients are now actually aligned to their assigned zone. Previously they could receive `zone_name` metadata without moving to the docked position.
+
+### `12652ba` — use zones layout transition for `movetozone`
+
+Changed `movetozone` to enter `zones` through the same transition helper used by `setlayout` and `switch_layout`, then reapply the user-requested target zone to the selected client.
+
+### `16545c6` — guard `zones_box()` before monitor dereference
+
+Moved the `zones_box()` null guard before `zones_monitor_base(m)` so future null monitor call sites cannot dereference `m` before validation.
+
+### `edb257e` — allow docked floating windows to redock
+
+Allowed floating clients that are already docked to a zone to participate in zone drag/drop. Dropping in the same zone preserves the manual position; dropping in a different best-overlap zone updates `zone_name` and snap-aligns to the new zone.
+
+### `7e7355a` — preserve tiled drag state and snap out-of-zone docked moves
+
+Added explicit `drag_was_tiled` state so temporary floating during tiled zone drags can be distinguished from real docked floating drags. Tiled drags restore the previous floating geometry metadata after drop. Docked floating drops outside all zones now snap back to the current/default zone instead of preserving an out-of-zone position with stale `zone_name`.
+
+### `2c16a1e` — assign zones again after clearing fullscreen state
+
+Entering zones assigns visible clients before fullscreen/maximized state is cleared. Clients in those states are skipped by the first assignment pass, so a second `zones_assign_missing_visible()` pass now runs after `clear_fullscreen_and_maximized_state()` whenever the resulting layout is zones.
+
+### `0bf50f3` — centralize client stack reparenting
+
+Added `client_reparent_by_stack()` to centralize stack/layer policy for overlay, top, undocked floating, docked floating, and tiled clients. This removes duplicated layer-selection logic and prevents overlay clients from being accidentally moved out of `LyrOverlay` by later state changes.
+
+### `87f8f66` — delay `movetozone` mutation until prerequisites pass
+
+Changed `movetozone` so tiled clients do not mutate `zone_name` until the command has located the zones layout and is ready to enter/apply it. Floating clients still assign directly because they do not need to switch layouts.
+
+## Implementation details
+
+The follow-up changes refine zones semantics, especially around layout transitions, floating windows, drag/drop, and stacking.
 
 ### 1. Layout transition semantics
 
@@ -103,6 +143,8 @@ Docked floating behavior:
 - keeps the floating size
 - reparents non-overlay floating clients to the tiled layer
 
+`movetozone` on a tiled client outside the zones layout enters zones through `set_monitor_layout()`, so it uses the same transition semantics as `setlayout,zones` and `switch_layout`. Because entering zones force-assigns visible clients by geometry, `movetozone` then reapplies the user-requested target zone to the selected client.
+
 `togglefloating` while in zones:
 
 - does not arbitrarily choose a new floating state; it only responds to the user's explicit toggle
@@ -114,13 +156,23 @@ Reasoning: floating-vs-tiled is a user or rules decision. Zone docking is an anc
 
 Dragging a tiled window in `zones` uses temporary floating geometry internally, but dropping the window must not change whether it is floating.
 
-The drop path now:
+The tiled drop path now:
 
 - assigns the drop zone
 - restores the client to tiled with `setfloating(c, 0)`
 - hides the zone drop preview
 
-Reasoning: dragging a tiled window from zone A to zone B is a zone reassignment, not a request to float the window. Only explicit user actions such as `togglefloating`, or window match/rule configuration, should determine floating state.
+Docked floating clients can also use zone drag/drop:
+
+- moving within the same zone preserves the user's new manual position
+- dropping onto a different best-overlap zone updates `zone_name`
+- redocking to a different zone snap-aligns through `zones_align_floating()`
+- dropping outside all zones snaps back to the current/default zone
+- the client remains floating
+
+Tiled zone drags are tracked with `drag_was_tiled` because they use temporary floating geometry while dragging. On drop, they are tiled again and their previous floating geometry metadata is restored so a later `togglefloating` does not resurrect the drag preview geometry.
+
+Reasoning: dragging a tiled window from zone A to zone B is a zone reassignment, not a request to float the window. Only explicit user actions such as `togglefloating`, or window match/rule configuration, should determine floating state. For already-floating docked windows, drag/drop is a redocking operation rather than a floating-state change, and out-of-zone drops should not leave a stale zone assignment paired with an out-of-zone position.
 
 ### 5. Zone drop preview
 
@@ -139,12 +191,13 @@ Reasoning: zones can overlap, so the user needs visible feedback about which zon
 
 The branch previously experimented with a separate `togglefloatabove` concept. That was rejected/removed from the current plan.
 
-Current stacking model:
+Current stacking model is centralized in `client_reparent_by_stack()`:
 
 - normal tiled clients: `LyrTile`
 - undocked floating clients: `LyrTop`, preserving existing Mango behavior
 - docked floating clients: `LyrTile` by default
 - overlay clients: `LyrOverlay`
+- explicit forced-top states such as fullscreen: `LyrTop`
 - XWayland above/top hints still map to top-layer behavior
 
 `toggleoverlay` remains the explicit always-on-top action. Docked floating windows are deliberately not always-on-top by default.
@@ -182,7 +235,7 @@ bind=SUPER,bracketleft,focuszone,left
 bind=SUPER+SHIFT,bracketleft,movetozone,left
 ```
 
-- `focuszone zone|zone...`: cycle focus through clients in one or more zones
+- `focuszone zone|zone...`: cycle focus through clients in one or more zones. If the focused client is already in the requested zone set, cycle from it; otherwise start with the top matching client.
 - `movetozone zone`: assign the selected client to a zone
 
 `setlayout,zones` and `switch_layout` now run the layout transition logic described above.
