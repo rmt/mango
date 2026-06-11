@@ -76,12 +76,12 @@ void handle_foreign_close_request(struct wl_listener *listener, void *data) {
 
 void handle_foreign_destroy(struct wl_listener *listener, void *data) {
 	Client *c = wl_container_of(listener, c, foreign_destroy);
-	wl_list_remove(&c->foreign_activate_request.link);
-	wl_list_remove(&c->foreign_minimize_request.link);
-	wl_list_remove(&c->foreign_maximize_request.link);
-	wl_list_remove(&c->foreign_fullscreen_request.link);
-	wl_list_remove(&c->foreign_close_request.link);
-	wl_list_remove(&c->foreign_destroy.link);
+	UNLISTEN(&c->foreign_activate_request);
+	UNLISTEN(&c->foreign_minimize_request);
+	UNLISTEN(&c->foreign_maximize_request);
+	UNLISTEN(&c->foreign_fullscreen_request);
+	UNLISTEN(&c->foreign_close_request);
+	UNLISTEN(&c->foreign_destroy);
 	c->foreign_toplevel = NULL;
 }
 

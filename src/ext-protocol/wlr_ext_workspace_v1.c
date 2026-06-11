@@ -7,6 +7,13 @@
 
 #define EXT_WORKSPACE_V1_VERSION 1
 
+static void unlisten(struct wl_listener *listener) {
+	if (listener && listener->link.next && listener->link.prev) {
+		wl_list_remove(&listener->link);
+		wl_list_init(&listener->link);
+	}
+}
+
 struct wlr_ext_workspace_v1_group_output {
 	struct wlr_output *output;
 	struct wlr_ext_workspace_group_handle_v1 *group;
@@ -550,7 +557,7 @@ static void manager_handle_display_destroy(struct wl_listener *listener,
 		wl_event_source_remove(manager->idle_source);
 	}
 
-	wl_list_remove(&manager->display_destroy.link);
+	unlisten(&manager->display_destroy);
 	wl_global_destroy(manager->global);
 	free(manager);
 }
@@ -648,8 +655,8 @@ workspace_send_group(struct wlr_ext_workspace_handle_v1 *workspace,
 
 static void
 destroy_group_output(struct wlr_ext_workspace_v1_group_output *group_output) {
-	wl_list_remove(&group_output->output_bind.link);
-	wl_list_remove(&group_output->output_destroy.link);
+	unlisten(&group_output->output_bind);
+	unlisten(&group_output->output_destroy);
 	wl_list_remove(&group_output->link);
 	free(group_output);
 }

@@ -30,7 +30,7 @@ struct dvec2 calculate_animation_curve_at(double t, int32_t type) {
 
 void handle_snapshot_meta_destroy(struct wl_listener *listener, void *data) {
 	SnapshotMetadata *meta = wl_container_of(listener, meta, destroy);
-	wl_list_remove(&meta->destroy.link); // 安全移除监听器
+	UNLISTEN(&meta->destroy); // 安全移除监听器
 	free(meta);
 }
 

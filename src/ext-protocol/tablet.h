@@ -118,7 +118,7 @@ void createtablet(struct wlr_input_device *device) {
 void destroytablet(struct wl_listener *listener, void *data) {
 	struct Tablet *tablet = wl_container_of(listener, tablet, destroy);
 
-	wl_list_remove(&listener->link);
+	UNLISTEN(listener);
 	wl_list_remove(&tablet->link);
 	free(tablet);
 }
@@ -129,14 +129,14 @@ void tabletpadtabletdestroy(struct wl_listener *listener, void *data) {
 
 	tablet_pad->tablet = NULL;
 
-	wl_list_remove(&tablet_pad->tablet_destroy.link);
+	UNLISTEN(&tablet_pad->tablet_destroy);
 	wl_list_init(&tablet_pad->tablet_destroy.link);
 }
 
 void attach_tablet_pad(struct TabletPad *tablet_pad, struct Tablet *tablet) {
 	tablet_pad->tablet = tablet;
 
-	wl_list_remove(&tablet_pad->tablet_destroy.link);
+	UNLISTEN(&tablet_pad->tablet_destroy);
 	tablet_pad->tablet_destroy.notify = tabletpadtabletdestroy;
 	wl_signal_add(&tablet->device->events.destroy, &tablet_pad->tablet_destroy);
 }
@@ -211,16 +211,16 @@ void destroytabletpad(struct wl_listener *listener, void *data) {
 	struct TabletPad *tablet_pad =
 		wl_container_of(listener, tablet_pad, destroy);
 
-	wl_list_remove(&listener->link);
+	UNLISTEN(listener);
 	wl_list_remove(&tablet_pad->link);
-	wl_list_remove(&tablet_pad->tablet_destroy.link);
-	wl_list_remove(&tablet_pad->attach.link);
+	UNLISTEN(&tablet_pad->tablet_destroy);
+	UNLISTEN(&tablet_pad->attach);
 	free(tablet_pad);
 }
 
 void destroytabletsurfacenotify(struct wl_listener *listener, void *data) {
 	struct TabletTool *tool = wl_container_of(listener, tool, surface_destroy);
-	wl_list_remove(&tool->surface_destroy.link);
+	UNLISTEN(&tool->surface_destroy);
 	tool->curr_surface = NULL;
 }
 
@@ -228,9 +228,9 @@ void destroytablettool(struct wl_listener *listener, void *data) {
 	struct TabletTool *tool = wl_container_of(listener, tool, destroy);
 
 	if (tool->curr_surface)
-		wl_list_remove(&tool->surface_destroy.link);
-	wl_list_remove(&tool->set_cursor.link);
-	wl_list_remove(&listener->link);
+		UNLISTEN(&tool->surface_destroy);
+	UNLISTEN(&tool->set_cursor);
+	UNLISTEN(listener);
 	free(tool);
 }
 
@@ -310,7 +310,7 @@ void tablettoolmotion(struct TabletTool *tool, bool change_x, bool change_y,
 					wlr_tablet_v2_tablet_pad_notify_leave(tablet_pad->pad_v2,
 														  tool->curr_surface);
 			}
-			wl_list_remove(&tool->surface_destroy.link);
+			UNLISTEN(&tool->surface_destroy);
 		}
 		if (surface) {
 			wl_list_for_each(tablet_pad, &tablet_pads, link) {
@@ -370,7 +370,7 @@ void tablettoolproximity(struct wl_listener *listener, void *data) {
 	case WLR_TABLET_TOOL_PROXIMITY_OUT:
 		wlr_tablet_v2_tablet_tool_notify_proximity_out(tool->tool_v2);
 		if (tool->curr_surface)
-			wl_list_remove(&tool->surface_destroy.link);
+			UNLISTEN(&tool->surface_destroy);
 		tool->curr_surface = NULL;
 		break;
 	case WLR_TABLET_TOOL_PROXIMITY_IN:
