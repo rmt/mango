@@ -3867,6 +3867,7 @@ void focusclient(Client *c, int32_t lift) {
 
 	Client *last_focus_client = NULL;
 	Monitor *um = NULL;
+	struct wlr_surface *surface = client_surface(c);
 
 	struct wlr_surface *old_keyboard_focus_surface =
 		seat->keyboard_state.focused_surface;
@@ -3877,7 +3878,7 @@ void focusclient(Client *c, int32_t lift) {
 	if (c && c->iskilling)
 		return;
 
-	if (c && !client_surface_mapped(c))
+	if (c && (!surface || !surface->mapped))
 		return;
 
 	if (c && client_should_ignore_focus(c) && client_is_x11_popup(c))
@@ -3887,11 +3888,10 @@ void focusclient(Client *c, int32_t lift) {
 		return;
 
 	/* Raise client in stacking order if requested */
-	if (c && lift)
+	if (c && lift && c->scene)
 		wlr_scene_node_raise_to_top(&c->scene->node); // 将视图提升到顶层
 
-	if (c && client_surface(c) == old_keyboard_focus_surface && selmon &&
-		selmon->sel)
+	if (c && surface == old_keyboard_focus_surface && selmon && selmon->sel)
 		return;
 
 	if (selmon && selmon->sel && selmon->sel != c &&
@@ -3902,7 +3902,7 @@ void focusclient(Client *c, int32_t lift) {
 
 	if (c && !c->iskilling && !client_is_unmanaged(c) && c->mon) {
 
-		last_focus_client = selmon->sel;
+		last_focus_client = selmon ? selmon->sel : NULL;
 		selmon = c->mon;
 		selmon->prevsel = selmon->sel;
 		selmon->sel = c;
@@ -3937,8 +3937,8 @@ void focusclient(Client *c, int32_t lift) {
 
 	// update other monitor focus disappear
 	wl_list_for_each(um, &mons, link) {
-		if (um->wlr_output->enabled && um != selmon && um->sel &&
-			!um->sel->iskilling && um->sel->isfocusing) {
+		if (um->wlr_output && um->wlr_output->enabled && um != selmon &&
+			um->sel && !um->sel->iskilling && um->sel->isfocusing) {
 
 			um->sel->isfocusing = false;
 			client_set_unfocused_opacity_animation(um->sel);
@@ -3955,7 +3955,7 @@ void focusclient(Client *c, int32_t lift) {
 
 	/* Deactivate old client if focus is changing */
 	if (old_keyboard_focus_surface &&
-		(!c || client_surface(c) != old_keyboard_focus_surface)) {
+		(!c || surface != old_keyboard_focus_surface)) {
 		/* If an exclusive_focus layer is focused, don't focus or activate
 		 * the client, but only update its position in fstack to render its
 		 * border with focuscolor and focus it after the exclusive_focus
@@ -3964,8 +3964,9 @@ void focusclient(Client *c, int32_t lift) {
 		LayerSurface *l = NULL;
 		int32_t type =
 			toplevel_from_wlr_surface(old_keyboard_focus_surface, &w, &l);
-		if (type == LayerShell && l->scene->node.enabled &&
-			l->layer_surface->current.layer >= ZWLR_LAYER_SHELL_V1_LAYER_TOP &&
+		if (type == LayerShell && l && l->scene && l->layer_surface &&
+			l->scene->node.enabled && l->layer_surface->current.layer >=
+				ZWLR_LAYER_SHELL_V1_LAYER_TOP &&
 			l == exclusive_focus) {
 			return;
 		} else if (w && w == exclusive_focus && client_wants_focus(w)) {
@@ -4002,21 +4003,23 @@ void focusclient(Client *c, int32_t lift) {
 	// set text input focus
 	// must before client_notify_enter,
 	// otherwise the position of text_input will be wrong.
-	dwl_im_relay_set_focus(dwl_input_method_relay, client_surface(c));
+	dwl_im_relay_set_focus(dwl_input_method_relay, surface);
 
 	/* Have a client, so focus its top-level wlr_surface */
-	client_notify_enter(client_surface(c), wlr_seat_get_keyboard(seat));
+	client_notify_enter(surface, wlr_seat_get_keyboard(seat));
 
 	/* Activate the new client */
-	client_activate_surface(client_surface(c), 1);
+	client_activate_surface(surface, 1);
 
-	if (active_constraint && active_constraint->surface != client_surface(c)) {
+	if (active_constraint && active_constraint->surface != surface) {
 		cursorconstrain(NULL);
 	}
 
 	struct wlr_pointer_constraint_v1 *constraint;
+	if (!pointer_constraints)
+		return;
 	wl_list_for_each(constraint, &pointer_constraints->constraints, link) {
-		if (constraint->surface == client_surface(c)) {
+		if (constraint->surface == surface) {
 			cursorconstrain(constraint);
 			break;
 		}
@@ -6514,9 +6517,10 @@ void unmapnotify(struct wl_listener *listener, void *data) {
 	int32_t i;
 	c->iskilling = 1;
 	struct ScrollerStackNode *target_node =
-		c->mon ? find_scroller_node(
-					 c->mon->pertag->scroller_state[c->mon->pertag->curtag], c)
-			   : NULL;
+		c->mon && c->mon->pertag
+			? find_scroller_node(
+				  c->mon->pertag->scroller_state[c->mon->pertag->curtag], c)
+			: NULL;
 	struct ScrollerStackNode *prev_node =
 		target_node ? target_node->prev_in_stack : NULL;
 	struct ScrollerStackNode *next_node =
@@ -6546,7 +6550,7 @@ void unmapnotify(struct wl_listener *listener, void *data) {
 	}
 
 	wl_list_for_each(m, &mons, link) {
-		if (!m->wlr_output->enabled) {
+		if (!m->wlr_output || !m->wlr_output->enabled) {
 			continue;
 		}
 		if (c == m->sel) {
@@ -7004,12 +7008,14 @@ int32_t synckeymap(void *data) {
 
 void activatex11(struct wl_listener *listener, void *data) {
 	Client *c = wl_container_of(listener, c, activate);
+	struct wlr_xwayland_surface *xsurface = c ? c->surface.xwayland : NULL;
 	bool need_arrange = false;
 
-	if (!c || c->iskilling || !c->foreign_toplevel || client_is_unmanaged(c))
+	if (!c || !xsurface || c->iskilling || !c->foreign_toplevel ||
+		client_is_unmanaged(c))
 		return;
 
-	if (c && c->swallowing)
+	if (c->swallowing)
 		return;
 
 	if (c->isminimized) {
@@ -7019,24 +7025,26 @@ void activatex11(struct wl_listener *listener, void *data) {
 		c->is_in_scratchpad = 0;
 		c->isnamedscratchpad = 0;
 		setborder_color(c);
-		if (VISIBLEON(c, c->mon)) {
+		if (c->mon && VISIBLEON(c, c->mon)) {
 			need_arrange = true;
 		}
 	}
 
-	if (config.focus_on_activate && !c->istagsilent && c != selmon->sel) {
-		if (!(c->mon == selmon && c->tags & c->mon->tagset[c->mon->seltags]))
+	if (config.focus_on_activate && !c->istagsilent && selmon &&
+		c != selmon->sel) {
+		if (c->mon &&
+			!(c->mon == selmon && c->tags & c->mon->tagset[c->mon->seltags]))
 			view_in_mon(&(Arg){.ui = c->tags}, true, c->mon, true);
-		wlr_xwayland_surface_activate(c->surface.xwayland, 1);
+		wlr_xwayland_surface_activate(xsurface, 1);
 		focusclient(c, 1);
 		need_arrange = true;
-	} else if (c != focustop(selmon)) {
+	} else if (!selmon || c != focustop(selmon)) {
 		c->isurgent = 1;
 		if (client_surface_mapped(c))
 			setborder_color(c);
 	}
 
-	if (need_arrange) {
+	if (need_arrange && c->mon) {
 		arrange(c->mon, false, false);
 	}
 
@@ -7046,26 +7054,37 @@ void activatex11(struct wl_listener *listener, void *data) {
 void configurex11(struct wl_listener *listener, void *data) {
 	Client *c = wl_container_of(listener, c, configure);
 	struct wlr_xwayland_surface_configure_event *event = data;
+	struct wlr_xwayland_surface *xsurface = c ? c->surface.xwayland : NULL;
+	struct wlr_surface *surface = client_surface(c);
 	struct wlr_box new_geo;
+
+	if (!c || !event || !xsurface)
+		return;
+
 	new_geo.x = event->x;
 	new_geo.y = event->y;
 	new_geo.width = event->width;
 	new_geo.height = event->height;
 	fix_xwayland_coordinate(&new_geo);
 
-	if (!client_surface(c) || !client_surface_mapped(c)) {
+	if (!surface || !surface->mapped) {
 
-		wlr_xwayland_surface_configure(c->surface.xwayland, new_geo.x,
-									   new_geo.y, new_geo.width,
-									   new_geo.height);
+		wlr_xwayland_surface_configure(xsurface, new_geo.x, new_geo.y,
+									   new_geo.width, new_geo.height);
 		return;
 	}
 
 	if (client_is_unmanaged(c)) {
-		wlr_scene_node_set_position(&c->scene->node, new_geo.x, new_geo.y);
-		wlr_xwayland_surface_configure(c->surface.xwayland, new_geo.x,
-									   new_geo.y, new_geo.width,
-									   new_geo.height);
+		if (c->scene)
+			wlr_scene_node_set_position(&c->scene->node, new_geo.x, new_geo.y);
+		wlr_xwayland_surface_configure(xsurface, new_geo.x, new_geo.y,
+								   new_geo.width, new_geo.height);
+		return;
+	}
+
+	if (!c->mon) {
+		wlr_xwayland_surface_configure(xsurface, new_geo.x, new_geo.y,
+								   new_geo.width, new_geo.height);
 		return;
 	}
 
@@ -7111,15 +7130,18 @@ void createnotifyx11(struct wl_listener *listener, void *data) {
 
 void commitx11(struct wl_listener *listener, void *data) {
 	Client *c = wl_container_of(listener, c, commmitx11);
-	struct wlr_surface_state *state = &c->surface.xwayland->surface->current;
+	struct wlr_xwayland_surface *xsurface = c ? c->surface.xwayland : NULL;
+	struct wlr_surface_state *state;
+
+	if (!c || !xsurface || !xsurface->surface)
+		return;
+	state = &xsurface->surface->current;
 
 	if ((int32_t)c->geom.width - 2 * (int32_t)c->bw == (int32_t)state->width &&
 		(int32_t)c->geom.height - 2 * (int32_t)c->bw ==
 			(int32_t)state->height &&
-		(int32_t)c->surface.xwayland->x ==
-			(int32_t)c->geom.x + (int32_t)c->bw &&
-		(int32_t)c->surface.xwayland->y ==
-			(int32_t)c->geom.y + (int32_t)c->bw) {
+		(int32_t)xsurface->x == (int32_t)c->geom.x + (int32_t)c->bw &&
+		(int32_t)xsurface->y == (int32_t)c->geom.y + (int32_t)c->bw) {
 		c->configure_serial = 0;
 	}
 }
@@ -7144,14 +7166,15 @@ void dissociatex11(struct wl_listener *listener, void *data) {
 
 void sethints(struct wl_listener *listener, void *data) {
 	Client *c = wl_container_of(listener, c, set_hints);
-	struct wlr_surface *surface = client_surface(c);
-	if (c == focustop(selmon) || !c || !c->surface.xwayland->hints)
+	struct wlr_xwayland_surface *xsurface = c ? c->surface.xwayland : NULL;
+
+	if (!c || !xsurface || !xsurface->hints || (selmon && c == focustop(selmon)))
 		return;
 
-	c->isurgent = xcb_icccm_wm_hints_get_urgency(c->surface.xwayland->hints);
+	c->isurgent = xcb_icccm_wm_hints_get_urgency(xsurface->hints);
 	printstatus(IPC_WATCH_ARRANGGE);
 
-	if (c->isurgent && surface && surface->mapped)
+	if (c->isurgent && client_surface_mapped(c))
 		setborder_color(c);
 }
 
