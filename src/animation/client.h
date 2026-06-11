@@ -302,7 +302,7 @@ void buffer_set_effect(Client *c, BufferData data) {
 
 void client_draw_shadow(Client *c) {
 
-	if (c->iskilling || !client_surface(c)->mapped || c->isnoshadow)
+	if (c->iskilling || !client_surface_mapped(c) || c->isnoshadow)
 		return;
 
 	if (!config.shadows || c->isfullscreen ||
@@ -414,7 +414,7 @@ void global_draw_tab_bar(Client *c, int32_t x, int32_t y, int32_t width,
 
 void apply_split_border(Client *c, bool hit_no_border) {
 
-	if (c->iskilling || !c->mon || !client_surface(c)->mapped)
+	if (c->iskilling || !c->mon || !client_surface_mapped(c))
 		return;
 
 	const Layout *layout = c->mon->pertag->ltidxs[c->mon->pertag->curtag];
@@ -504,7 +504,7 @@ void apply_split_border(Client *c, bool hit_no_border) {
 }
 
 void apply_border(Client *c) {
-	if (!c || c->iskilling || !client_surface(c)->mapped)
+	if (!c || c->iskilling || !client_surface_mapped(c))
 		return;
 
 	if (c->isfullscreen) {
@@ -874,7 +874,7 @@ void client_set_drop_area(Client *c) {
 
 void client_apply_clip(Client *c, float factor) {
 
-	if (c->iskilling || !client_surface(c)->mapped)
+	if (c->iskilling || !client_surface_mapped(c))
 		return;
 
 	struct wlr_box clip_box;
@@ -1284,7 +1284,7 @@ void resize(Client *c, struct wlr_box geo, int32_t interact) {
 	// 动画设置的起始函数，这里用来计算一些动画的起始值
 	// 动画起始位置大小是由于c->animainit_geom确定的
 
-	if (!c || !c->mon || !client_surface(c)->mapped)
+	if (!c || !c->mon || !client_surface_mapped(c))
 		return;
 
 	struct wlr_box *bbox;
@@ -1567,7 +1567,7 @@ bool client_apply_focus_opacity(Client *c) {
 
 bool client_draw_frame(Client *c) {
 
-	if (!c || !client_surface(c)->mapped)
+	if (!c || !client_surface_mapped(c))
 		return false;
 
 	if (!c->need_output_flush) {
