@@ -534,6 +534,7 @@ typedef struct {
 
 typedef struct {
 	struct wlr_xdg_popup *wlr_popup;
+	struct wlr_scene_tree *scene;
 	struct wl_listener destroy;
 	struct wl_listener commit;
 	struct wl_listener reposition;
@@ -3013,7 +3014,16 @@ static bool popup_unconstrain(Popup *popup) {
 
 static void destroypopup(struct wl_listener *listener, void *data) {
 	Popup *popup = wl_container_of(listener, popup, destroy);
+	struct wlr_surface *surface = NULL;
+
+	if (popup->wlr_popup && popup->wlr_popup->base)
+		surface = popup->wlr_popup->base->surface;
+
+	if (surface && surface->data == popup->scene)
+		surface->data = NULL;
+
 	UNLISTEN(&popup->destroy);
+	UNLISTEN(&popup->commit);
 	UNLISTEN(&popup->reposition);
 	free(popup);
 }
@@ -3026,6 +3036,9 @@ static void commitpopup(struct wl_listener *listener, void *data) {
 	struct wlr_xdg_popup *wlr_popup =
 		wlr_xdg_popup_try_from_wlr_surface(surface);
 
+	if (!wlr_popup)
+		return;
+
 	if (!wlr_popup->base->initial_commit)
 		return;
 
@@ -3036,8 +3049,13 @@ static void commitpopup(struct wl_listener *listener, void *data) {
 
 	wlr_scene_node_raise_to_top(wlr_popup->parent->data);
 
-	wlr_popup->base->surface->data =
+	popup->scene =
 		wlr_scene_xdg_surface_create(wlr_popup->parent->data, wlr_popup->base);
+	if (!popup->scene) {
+		should_destroy = true;
+		goto cleanup_popup_commit;
+	}
+	wlr_popup->base->surface->data = popup->scene;
 
 	popup->wlr_popup = wlr_popup;
 
@@ -3715,6 +3733,11 @@ void cursorwarptohint(void) {
 }
 
 void destroydragicon(struct wl_listener *listener, void *data) {
+	struct wlr_drag_icon *icon = data;
+
+	if (icon)
+		icon->data = NULL;
+
 	/* Focus enter isn't sent during drag, so refocus the focused node. */
 	focusclient(focustop(selmon), 1);
 	motionnotify(0, NULL, 0, 0, 0, 0);
@@ -3768,6 +3791,9 @@ destroy:
 	UNLISTEN(&lock->unlock);
 	UNLISTEN(&lock->destroy);
 
+	if (lock->lock && lock->lock->data == lock)
+		lock->lock->data = NULL;
+
 	wlr_scene_node_destroy(&lock->scene->node);
 	cur_lock = NULL;
 	free(lock);
@@ -3777,11 +3803,15 @@ void destroylocksurface(struct wl_listener *listener, void *data) {
 	Monitor *m = wl_container_of(listener, m, destroy_lock_surface);
 	struct wlr_session_lock_surface_v1 *surface,
 		*lock_surface = m->lock_surface;
+	struct wlr_surface *wlr_surface = lock_surface ? lock_surface->surface : NULL;
 
 	m->lock_surface = NULL;
 	UNLISTEN(&m->destroy_lock_surface);
 
-	if (lock_surface->surface != seat->keyboard_state.focused_surface) {
+	if (wlr_surface)
+		wlr_surface->data = NULL;
+
+	if (!wlr_surface || wlr_surface != seat->keyboard_state.focused_surface) {
 		if (exclusive_focus && !locked) {
 			reset_exclusive_layers_focus(m);
 		}
@@ -3867,6 +3897,8 @@ void destroykeyboardgroup(struct wl_listener *listener, void *data) {
 	UNLISTEN(&group->key);
 	UNLISTEN(&group->modifiers);
 	UNLISTEN(&group->destroy);
+	if (group->wlr_group && group->wlr_group->data == group)
+		group->wlr_group->data = NULL;
 	wlr_keyboard_group_destroy(group->wlr_group);
 	free(group);
 }

@@ -234,6 +234,8 @@ static void update_popup_position(struct dwl_input_method_popup *popup) {
 		cursor_rect = text_input->input->current.cursor_rectangle;
 
 		tree = relay->focused_surface->data;
+		if (!tree)
+			return;
 		wlr_scene_node_coords(&tree->node, &lx, &ly);
 		cursor_rect.x += lx;
 		cursor_rect.y += ly;

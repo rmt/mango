@@ -118,6 +118,10 @@ void createtablet(struct wlr_input_device *device) {
 void destroytablet(struct wl_listener *listener, void *data) {
 	struct Tablet *tablet = wl_container_of(listener, tablet, destroy);
 
+	if (tablet->tablet_v2 && tablet->tablet_v2->wlr_tablet &&
+		tablet->tablet_v2->wlr_tablet->data == tablet)
+		tablet->tablet_v2->wlr_tablet->data = NULL;
+
 	UNLISTEN(listener);
 	wl_list_remove(&tablet->link);
 	free(tablet);
@@ -226,6 +230,10 @@ void destroytabletsurfacenotify(struct wl_listener *listener, void *data) {
 
 void destroytablettool(struct wl_listener *listener, void *data) {
 	struct TabletTool *tool = wl_container_of(listener, tool, destroy);
+
+	if (tool->tool_v2 && tool->tool_v2->wlr_tool &&
+		tool->tool_v2->wlr_tool->data == tool)
+		tool->tool_v2->wlr_tool->data = NULL;
 
 	if (tool->curr_surface)
 		UNLISTEN(&tool->surface_destroy);
