@@ -2970,28 +2970,33 @@ static bool popup_unconstrain(Popup *popup) {
 	}
 
 	type = toplevel_from_wlr_surface(wlr_popup->base->surface, &c, &l);
-	if ((l && !l->mon) || (c && !c->mon)) {
+	if (type < 0)
 		return true;
-	}
-
-	struct wlr_box usable = type == LayerShell ? l->mon->m : c->mon->w;
 
 	int lx, ly;
-	struct wlr_box constraint_box;
+	struct wlr_box usable, constraint_box;
 
 	if (type == LayerShell) {
+		if (!l || !l->mon || !l->scene_layer)
+			return true;
+		usable = l->mon->m;
 		wlr_scene_node_coords(&l->scene_layer->tree->node, &lx, &ly);
 		constraint_box.x = usable.x - lx;
 		constraint_box.y = usable.y - ly;
 		constraint_box.width = usable.width;
 		constraint_box.height = usable.height;
-	} else {
+	} else if (type == XDGShell) {
+		if (!c || !c->mon)
+			return true;
+		usable = c->mon->w;
 		constraint_box.x =
 			usable.x - (c->geom.x + c->bw - c->surface.xdg->current.geometry.x);
 		constraint_box.y =
 			usable.y - (c->geom.y + c->bw - c->surface.xdg->current.geometry.y);
 		constraint_box.width = usable.width;
 		constraint_box.height = usable.height;
+	} else {
+		return true;
 	}
 
 	wlr_xdg_popup_unconstrain_from_box(wlr_popup, &constraint_box);
