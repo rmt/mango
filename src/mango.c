@@ -4027,7 +4027,7 @@ void focusclient(Client *c, int32_t lift) {
 	if (c && c->iskilling)
 		return;
 
-	if (c && (!surface || !surface->mapped))
+	if (c && !client_surface_mapped(c))
 		return;
 
 	if (c && client_should_ignore_focus(c) && client_is_x11_popup(c))
@@ -7236,7 +7236,7 @@ void configurex11(struct wl_listener *listener, void *data) {
 	new_geo.height = event->height;
 	fix_xwayland_coordinate(&new_geo);
 
-	if (!surface || !surface->mapped) {
+	if (!surface || !client_surface_mapped(c)) {
 
 		wlr_xwayland_surface_configure(xsurface, new_geo.x, new_geo.y,
 									   new_geo.width, new_geo.height);
