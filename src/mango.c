@@ -3725,12 +3725,20 @@ void destroyidleinhibitor(struct wl_listener *listener, void *data) {
 
 void destroylayernodenotify(struct wl_listener *listener, void *data) {
 	LayerSurface *l = wl_container_of(listener, l, destroy);
+	struct wlr_layer_surface_v1 *layer_surface = l->layer_surface;
+	struct wlr_surface *surface = layer_surface ? layer_surface->surface : NULL;
 
 	wl_list_remove(&l->link);
 	wl_list_remove(&l->destroy.link);
 	wl_list_remove(&l->map.link);
 	wl_list_remove(&l->unmap.link);
 	wl_list_remove(&l->surface_commit.link);
+
+	if (layer_surface && layer_surface->data == l)
+		layer_surface->data = NULL;
+	if (surface && surface->data == l->popups)
+		surface->data = NULL;
+
 	wlr_scene_node_destroy(&l->popups->node);
 	free(l);
 }
@@ -3786,6 +3794,18 @@ void // 0.7 custom
 destroynotify(struct wl_listener *listener, void *data) {
 	/* Called when the xdg_toplevel is destroyed. */
 	Client *c = wl_container_of(listener, c, destroy);
+#ifdef XWAYLAND
+	struct wlr_xwayland_surface *xsurface = NULL;
+#endif
+	struct wlr_xdg_surface *xdg_surface = NULL;
+
+#ifdef XWAYLAND
+	if (c->type != XDGShell)
+		xsurface = c->surface.xwayland;
+	else
+#endif
+		xdg_surface = c->surface.xdg;
+
 	wl_list_remove(&c->destroy.link);
 	wl_list_remove(&c->set_title.link);
 	wl_list_remove(&c->fullscreen.link);
@@ -3805,6 +3825,13 @@ destroynotify(struct wl_listener *listener, void *data) {
 		wl_list_remove(&c->map.link);
 		wl_list_remove(&c->unmap.link);
 	}
+#ifdef XWAYLAND
+	if (xsurface && xsurface->data == c)
+		xsurface->data = NULL;
+#endif
+	if (xdg_surface && xdg_surface->data == c)
+		xdg_surface->data = NULL;
+
 	free(c);
 }
 
@@ -6479,6 +6506,8 @@ void unmapnotify(struct wl_listener *listener, void *data) {
 	Client *c = wl_container_of(listener, c, unmap);
 	Monitor *m = NULL;
 	Client *nextfocus = NULL;
+	struct wlr_surface *surface = client_surface(c);
+	int32_t i;
 	c->iskilling = 1;
 	struct ScrollerStackNode *target_node =
 		c->mon ? find_scroller_node(
@@ -6551,7 +6580,7 @@ void unmapnotify(struct wl_listener *listener, void *data) {
 #endif
 		if (c == exclusive_focus)
 			exclusive_focus = NULL;
-		if (client_surface(c) == seat->keyboard_state.focused_surface)
+		if (surface == seat->keyboard_state.focused_surface)
 			focusclient(focustop(selmon), 1);
 	} else {
 		if (!c->swallowing)
@@ -6589,7 +6618,19 @@ void unmapnotify(struct wl_listener *listener, void *data) {
 		c->tab_bar_node = NULL;
 	}
 
-	wlr_scene_node_destroy(&c->scene->node);
+	if (surface && surface->data == c->scene)
+		surface->data = NULL;
+	if (c->scene)
+		wlr_scene_node_destroy(&c->scene->node);
+	c->scene = NULL;
+	c->scene_surface = NULL;
+	c->overview_scene_surface = NULL;
+	c->border = NULL;
+	c->droparea = NULL;
+	c->shadow = NULL;
+	for (i = 0; i < LENGTH(c->splitindicator); i++)
+		c->splitindicator[i] = NULL;
+
 	printstatus(IPC_WATCH_ARRANGGE);
 	motionnotify(0, NULL, 0, 0, 0, 0);
 }
