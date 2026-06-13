@@ -5685,6 +5685,17 @@ void setfullscreen(Client *c, int32_t fullscreen,
 	client_pending_fullscreen_state(c, fullscreen);
 
 	if (fullscreen) {
+		/* A fullscreen request can arrive while a new client is being mapped and
+		 * while view_in_mon()/tag animations are hiding/showing scene nodes.  In
+		 * that race the normal arrange path may have disabled the just-mapped
+		 * scene because it was still on the old tag, leaving e.g. XWayland/Wine
+		 * fullscreen windows configured and focused but not visible after the tag
+		 * switch completes.  If the client is fullscreen on the currently visible
+		 * tag, make the scene explicitly visible before raising/resizing it. */
+		if (VISIBLEON(c, c->mon)) {
+			wlr_scene_node_set_enabled(&c->scene->node, true);
+			wlr_scene_node_set_enabled(&c->scene_surface->node, true);
+		}
 
 		if (c->ismaximizescreen && !c->force_fakemaximize) {
 			client_set_maximized(c, false);
