@@ -522,12 +522,12 @@ static void handle_new_text_input(struct wl_listener *listener, void *data) {
 	struct dwl_input_method_relay *relay =
 		wl_container_of(listener, relay, new_text_input);
 	struct wlr_text_input_v3 *wlr_text_input = data;
-	struct text_input *text_input = ecalloc(1, sizeof(struct text_input));
 
 	if (seat != wlr_text_input->seat) {
 		return;
 	}
 
+	struct text_input *text_input = ecalloc(1, sizeof(struct text_input));
 	text_input->input = wlr_text_input;
 	text_input->relay = relay;
 	wl_list_insert(&relay->text_inputs, &text_input->link);
@@ -577,8 +577,44 @@ struct dwl_input_method_relay *dwl_im_relay_create() {
 }
 
 void dwl_im_relay_finish(struct dwl_input_method_relay *relay) {
+	if (!relay)
+		return;
+
 	UNLISTEN(&relay->new_text_input);
 	UNLISTEN(&relay->new_input_method);
+	UNLISTEN(&relay->input_method_commit);
+	UNLISTEN(&relay->input_method_grab_keyboard);
+	UNLISTEN(&relay->input_method_destroy);
+	UNLISTEN(&relay->input_method_new_popup_surface);
+	UNLISTEN(&relay->keyboard_grab_destroy);
+	UNLISTEN(&relay->focused_surface_destroy);
+
+	struct dwl_input_method_popup *popup, *tmp_popup;
+	wl_list_for_each_safe(popup, tmp_popup, &relay->popups, link) {
+		UNLISTEN(&popup->destroy);
+		UNLISTEN(&popup->commit);
+		wl_list_remove(&popup->link);
+		if (popup->tree)
+			wlr_scene_node_destroy(&popup->tree->node);
+		free(popup);
+	}
+
+	struct text_input *text_input, *tmp_text_input;
+	wl_list_for_each_safe(text_input, tmp_text_input, &relay->text_inputs, link) {
+		UNLISTEN(&text_input->enable);
+		UNLISTEN(&text_input->disable);
+		UNLISTEN(&text_input->commit);
+		UNLISTEN(&text_input->destroy);
+		wl_list_remove(&text_input->link);
+		free(text_input);
+	}
+
+	if (relay->popup_tree)
+		wlr_scene_node_destroy(&relay->popup_tree->node);
+
+	relay->active_text_input = NULL;
+	relay->input_method = NULL;
+	relay->focused_surface = NULL;
 	free(relay);
 }
 

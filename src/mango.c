@@ -1076,6 +1076,14 @@ static struct wl_listener cursor_button = {.notify = buttonpress};
 static struct wl_listener cursor_frame = {.notify = cursorframe};
 static struct wl_listener cursor_motion = {.notify = motionrelative};
 static struct wl_listener cursor_motion_absolute = {.notify = motionabsolute};
+static struct wl_listener cursor_swipe_begin = {.notify = swipe_begin};
+static struct wl_listener cursor_swipe_update = {.notify = swipe_update};
+static struct wl_listener cursor_swipe_end = {.notify = swipe_end};
+static struct wl_listener cursor_pinch_begin = {.notify = pinch_begin};
+static struct wl_listener cursor_pinch_update = {.notify = pinch_update};
+static struct wl_listener cursor_pinch_end = {.notify = pinch_end};
+static struct wl_listener cursor_hold_begin = {.notify = hold_begin};
+static struct wl_listener cursor_hold_end = {.notify = hold_end};
 static struct wl_listener gpu_reset = {.notify = gpureset};
 static struct wl_listener layout_change = {.notify = updatemons};
 static struct wl_listener new_idle_inhibitor = {.notify = createidleinhibitor};
@@ -2542,6 +2550,14 @@ void cleanuplisteners(void) {
 	UNLISTEN(&cursor_frame);
 	UNLISTEN(&cursor_motion);
 	UNLISTEN(&cursor_motion_absolute);
+	UNLISTEN(&cursor_swipe_begin);
+	UNLISTEN(&cursor_swipe_update);
+	UNLISTEN(&cursor_swipe_end);
+	UNLISTEN(&cursor_pinch_begin);
+	UNLISTEN(&cursor_pinch_update);
+	UNLISTEN(&cursor_pinch_end);
+	UNLISTEN(&cursor_hold_begin);
+	UNLISTEN(&cursor_hold_end);
 	UNLISTEN(&tablet_tool_proximity);
 	UNLISTEN(&tablet_tool_axis);
 	UNLISTEN(&tablet_tool_button);
@@ -2601,6 +2617,21 @@ void cleanup(void) {
 
 	dwl_im_relay_finish(dwl_input_method_relay);
 
+	if (hide_cursor_source) {
+		wl_event_source_remove(hide_cursor_source);
+		hide_cursor_source = NULL;
+	}
+	if (keep_idle_inhibit_source) {
+		wl_event_source_remove(keep_idle_inhibit_source);
+		keep_idle_inhibit_source = NULL;
+	}
+#ifdef XWAYLAND
+	if (sync_keymap) {
+		wl_event_source_remove(sync_keymap);
+		sync_keymap = NULL;
+	}
+#endif
+
 	/* If it's not destroyed manually it will cause a use-after-free of
 	 * wlr_seat. Destroy it until it's fixed in the wlroots side */
 	wlr_backend_destroy(backend);
@@ -2616,6 +2647,7 @@ void cleanup(void) {
 void cleanupmon(struct wl_listener *listener, void *data) {
 	Monitor *m = wl_container_of(listener, m, destroy);
 	LayerSurface *l = NULL, *tmp = NULL;
+	DwlIpcOutput *ipc_output = NULL, *ipc_tmp = NULL;
 	uint32_t i;
 
 	m->iscleanuping = true;
@@ -2627,8 +2659,12 @@ void cleanupmon(struct wl_listener *listener, void *data) {
 	}
 
 	// clean ext-workspaces grouplab
-	wlr_ext_workspace_group_handle_v1_output_leave(m->ext_group, m->wlr_output);
-	wlr_ext_workspace_group_handle_v1_destroy(m->ext_group);
+	if (m->ext_group) {
+		wlr_ext_workspace_group_handle_v1_output_leave(m->ext_group,
+												  m->wlr_output);
+		wlr_ext_workspace_group_handle_v1_destroy(m->ext_group);
+		m->ext_group = NULL;
+	}
 	cleanup_workspaces_by_monitor(m);
 
 	UNLISTEN(&m->destroy);
@@ -2637,6 +2673,8 @@ void cleanupmon(struct wl_listener *listener, void *data) {
 	UNLISTEN(&m->request_state);
 	if (m->lock_surface)
 		destroylocksurface(&m->destroy_lock_surface, NULL);
+	wl_list_for_each_safe(ipc_output, ipc_tmp, &m->dwl_ipc_outputs, link)
+		wl_resource_destroy(ipc_output->resource);
 	m->wlr_output->data = NULL;
 	wlr_output_layout_remove(output_layout, m->wlr_output);
 	wlr_scene_output_destroy(m->scene_output);
@@ -3122,15 +3160,17 @@ void createkeyboard(struct wlr_keyboard *keyboard) {
 		(device = wlr_libinput_get_device_handle(&keyboard->base))) {
 
 		InputDevice *input_dev = calloc(1, sizeof(InputDevice));
-		input_dev->wlr_device = &keyboard->base;
-		input_dev->libinput_device = device;
-		input_dev->device_data = keyboard;
+		if (input_dev) {
+			input_dev->wlr_device = &keyboard->base;
+			input_dev->libinput_device = device;
+			input_dev->device_data = keyboard;
 
-		input_dev->destroy_listener.notify = destroyinputdevice;
-		wl_signal_add(&keyboard->base.events.destroy,
-					  &input_dev->destroy_listener);
+			input_dev->destroy_listener.notify = destroyinputdevice;
+			wl_signal_add(&keyboard->base.events.destroy,
+						  &input_dev->destroy_listener);
 
-		wl_list_insert(&inputdevices, &input_dev->link);
+			wl_list_insert(&inputdevices, &input_dev->link);
+		}
 	}
 
 	/* Set the keymap to match the group keymap */
@@ -3222,11 +3262,30 @@ void createlayersurface(struct wl_listener *listener, void *data) {
 	l->mon = layer_surface->output->data;
 	l->scene_layer =
 		wlr_scene_layer_surface_v1_create(scene_layer, layer_surface);
+	if (!l->scene_layer) {
+		UNLISTEN(&l->map);
+		UNLISTEN(&l->surface_commit);
+		UNLISTEN(&l->unmap);
+		layer_surface->data = NULL;
+		free(l);
+		wlr_layer_surface_v1_destroy(layer_surface);
+		return;
+	}
 	l->scene = l->scene_layer->tree;
 	l->popups = surface->data = wlr_scene_tree_create(
 		layer_surface->current.layer < ZWLR_LAYER_SHELL_V1_LAYER_TOP
 			? layers[LyrTop]
 			: scene_layer);
+	if (!l->popups) {
+		UNLISTEN(&l->map);
+		UNLISTEN(&l->surface_commit);
+		UNLISTEN(&l->unmap);
+		layer_surface->data = NULL;
+		wlr_scene_node_destroy(&l->scene->node);
+		free(l);
+		wlr_layer_surface_v1_destroy(layer_surface);
+		return;
+	}
 	l->scene->node.data = l->popups->node.data = l;
 
 	LISTEN(&l->scene->node.events.destroy, &l->destroy, destroylayernodenotify);
@@ -3474,9 +3533,13 @@ void createmon(struct wl_listener *listener, void *data) {
 		wlr_scene_node_reparent(&m->blur->node, layers[LyrBlur]);
 		wlr_scene_optimized_blur_set_size(m->blur, m->m.width, m->m.height);
 	}
-	m->ext_group = wlr_ext_workspace_group_handle_v1_create(
-		ext_manager, EXT_WORKSPACE_ENABLE_CAPS);
-	wlr_ext_workspace_group_handle_v1_output_enter(m->ext_group, m->wlr_output);
+	if (ext_manager) {
+		m->ext_group = wlr_ext_workspace_group_handle_v1_create(
+			ext_manager, EXT_WORKSPACE_ENABLE_CAPS);
+		if (m->ext_group)
+			wlr_ext_workspace_group_handle_v1_output_enter(m->ext_group,
+												  m->wlr_output);
+	}
 
 	for (i = 1; i <= LENGTH(tags); i++) {
 		add_workspace_by_tag(i, m);
@@ -3611,14 +3674,16 @@ void createpointer(struct wlr_pointer *pointer) {
 		configure_pointer(device);
 
 		InputDevice *input_dev = calloc(1, sizeof(InputDevice));
-		input_dev->wlr_device = &pointer->base;
-		input_dev->libinput_device = device;
+		if (input_dev) {
+			input_dev->wlr_device = &pointer->base;
+			input_dev->libinput_device = device;
 
-		input_dev->destroy_listener.notify = destroyinputdevice;
-		wl_signal_add(&pointer->base.events.destroy,
-					  &input_dev->destroy_listener);
+			input_dev->destroy_listener.notify = destroyinputdevice;
+			wl_signal_add(&pointer->base.events.destroy,
+						  &input_dev->destroy_listener);
 
-		wl_list_insert(&inputdevices, &input_dev->link);
+			wl_list_insert(&inputdevices, &input_dev->link);
+		}
 	}
 	wlr_cursor_attach_input_device(cursor, &pointer->base);
 }
@@ -3651,6 +3716,8 @@ void createswitch(struct wlr_switch *switch_device) {
 		(device = wlr_libinput_get_device_handle(&switch_device->base))) {
 
 		InputDevice *input_dev = calloc(1, sizeof(InputDevice));
+		if (!input_dev)
+			return;
 		input_dev->wlr_device = &switch_device->base;
 		input_dev->libinput_device = device;
 		input_dev->device_data = NULL; // 初始化为 NULL
@@ -3661,6 +3728,11 @@ void createswitch(struct wlr_switch *switch_device) {
 
 		// 创建 Switch 特定数据
 		Switch *sw = calloc(1, sizeof(Switch));
+		if (!sw) {
+			UNLISTEN(&input_dev->destroy_listener);
+			free(input_dev);
+			return;
+		}
 		sw->wlr_switch = switch_device;
 		sw->toggle.notify = switch_toggle;
 		sw->input_dev = input_dev;
@@ -3898,7 +3970,8 @@ void destroysessionlock(struct wl_listener *listener, void *data) {
 
 void destroykeyboardgroup(struct wl_listener *listener, void *data) {
 	KeyboardGroup *group = wl_container_of(listener, group, destroy);
-	wl_event_source_remove(group->key_repeat_source);
+	if (group->key_repeat_source)
+		wl_event_source_remove(group->key_repeat_source);
 	UNLISTEN(&group->key);
 	UNLISTEN(&group->modifiers);
 	UNLISTEN(&group->destroy);
@@ -6241,14 +6314,14 @@ void setup(void) {
 				  &new_virtual_pointer);
 
 	pointer_gestures = wlr_pointer_gestures_v1_create(dpy);
-	LISTEN_STATIC(&cursor->events.swipe_begin, swipe_begin);
-	LISTEN_STATIC(&cursor->events.swipe_update, swipe_update);
-	LISTEN_STATIC(&cursor->events.swipe_end, swipe_end);
-	LISTEN_STATIC(&cursor->events.pinch_begin, pinch_begin);
-	LISTEN_STATIC(&cursor->events.pinch_update, pinch_update);
-	LISTEN_STATIC(&cursor->events.pinch_end, pinch_end);
-	LISTEN_STATIC(&cursor->events.hold_begin, hold_begin);
-	LISTEN_STATIC(&cursor->events.hold_end, hold_end);
+	wl_signal_add(&cursor->events.swipe_begin, &cursor_swipe_begin);
+	wl_signal_add(&cursor->events.swipe_update, &cursor_swipe_update);
+	wl_signal_add(&cursor->events.swipe_end, &cursor_swipe_end);
+	wl_signal_add(&cursor->events.pinch_begin, &cursor_pinch_begin);
+	wl_signal_add(&cursor->events.pinch_update, &cursor_pinch_update);
+	wl_signal_add(&cursor->events.pinch_end, &cursor_pinch_end);
+	wl_signal_add(&cursor->events.hold_begin, &cursor_hold_begin);
+	wl_signal_add(&cursor->events.hold_end, &cursor_hold_end);
 
 	seat = wlr_seat_create(dpy, "seat0");
 
@@ -6986,6 +7059,8 @@ void handle_keyboard_shortcuts_inhibit_new_inhibitor(
 
 	KeyboardShortcutsInhibitor *kbsinhibitor =
 		calloc(1, sizeof(KeyboardShortcutsInhibitor));
+	if (!kbsinhibitor)
+		return;
 
 	kbsinhibitor->inhibitor = inhibitor;
 
@@ -7276,7 +7351,9 @@ int32_t main(int32_t argc, char *argv[]) {
 		} else if (c == 'c') {
 			cli_config_path = optarg;
 		} else if (c == 'p') {
-			return parse_config() ? EXIT_SUCCESS : EXIT_FAILURE;
+			bool config_ok = parse_config();
+			free_config();
+			return config_ok ? EXIT_SUCCESS : EXIT_FAILURE;
 		} else {
 			goto usage;
 		}
@@ -7292,6 +7369,7 @@ int32_t main(int32_t argc, char *argv[]) {
 	setup();
 	run(startup_cmd);
 	cleanup();
+	free_config();
 	return EXIT_SUCCESS;
 usage:
 	printf("Usage: mango [OPTIONS]\n"

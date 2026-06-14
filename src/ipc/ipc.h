@@ -344,6 +344,10 @@ static void handle_command(int client_fd, const char *cmd_raw) {
 		resp = build_monitor_tags_response(m);
 	} else if (strncmp(cmd, "dispatch ", 9) == 0) {
 		char *dispatch_copy = strdup(cmd_raw + 9);
+		if (!dispatch_copy) {
+			send_static_json(client_fd, "{\"error\":\"out of memory\"}\n");
+			return;
+		}
 		char *out = dispatch_copy, *ptr = dispatch_copy;
 		int client_id = -1;
 		while (*ptr) {
@@ -451,7 +455,8 @@ static void ipc_notify_json_to_fd(int fd, cJSON *json) {
 
 static void ipc_remove_watch_client(struct ipc_watch_client *wc) {
 	wl_list_remove(&wc->link);
-	wl_event_source_remove(wc->source);
+	if (wc->source)
+		wl_event_source_remove(wc->source);
 	close(wc->fd);
 	free(wc);
 }
@@ -513,6 +518,8 @@ static bool handle_watch_command(int fd, const char *cmd,
 		return false;
 
 	struct ipc_watch_client *wc = calloc(1, sizeof(*wc));
+	if (!wc)
+		return false;
 	wc->fd = fd;
 	wc->type = type;
 
@@ -527,9 +534,14 @@ static bool handle_watch_command(int fd, const char *cmd,
 		wc->target.client.id = client_id;
 
 	wl_event_source_remove(client->source);
+	client->source = NULL;
 	wc->source = wl_event_loop_add_fd(
 		client->loop, fd, WL_EVENT_READABLE | WL_EVENT_HANGUP | WL_EVENT_ERROR,
 		ipc_watch_data_handler, wc);
+	if (!wc->source) {
+		free(wc);
+		return false;
+	}
 	wl_list_insert(&watch_clients, &wc->link);
 
 	/* 推送初始状态 */
@@ -672,7 +684,8 @@ static int ipc_handle_client_data(int fd, uint32_t mask, void *data) {
 
 cleanup:
 	close(client->fd);
-	wl_event_source_remove(client->source);
+	if (client->source)
+		wl_event_source_remove(client->source);
 	free(client->buf);
 	free(client);
 	return 0;
@@ -692,11 +705,19 @@ static int ipc_handle_connection(int fd, uint32_t mask, void *data) {
 	fcntl(client_fd, F_SETFD, flags | FD_CLOEXEC);
 
 	struct ipc_client_state *client = calloc(1, sizeof(*client));
+	if (!client) {
+		close(client_fd);
+		return 0;
+	}
 	client->fd = client_fd;
 	client->loop = loop;
 	client->source = wl_event_loop_add_fd(
 		loop, client_fd, WL_EVENT_READABLE | WL_EVENT_HANGUP | WL_EVENT_ERROR,
 		ipc_handle_client_data, client);
+	if (!client->source) {
+		close(client_fd);
+		free(client);
+	}
 	return 0;
 }
 
@@ -717,6 +738,10 @@ void ipc_notify_monitor(Monitor *m) {
 					return;
 				len = strlen(raw);
 				json_str = malloc(len + 2);
+				if (!json_str) {
+					free(raw);
+					return;
+				}
 				snprintf(json_str, len + 2, "%s\n", raw);
 				free(raw);
 			}
@@ -759,6 +784,10 @@ void ipc_notify_last_surface_ws_name(Monitor *m) {
 				return;
 			len = strlen(raw);
 			json_str = malloc(len + 2);
+			if (!json_str) {
+				free(raw);
+				return;
+			}
 			snprintf(json_str, len + 2, "%s\n", raw);
 			free(raw);
 		}
@@ -790,6 +819,10 @@ void ipc_notify_focusing_client(void) {
 					return;
 				len = strlen(raw);
 				json_str = malloc(len + 2);
+				if (!json_str) {
+					free(raw);
+					return;
+				}
 				snprintf(json_str, len + 2, "%s\n", raw);
 				free(raw);
 			}
@@ -814,6 +847,10 @@ void ipc_notify_client(Client *c) {
 					return;
 				len = strlen(raw);
 				json_str = malloc(len + 2);
+				if (!json_str) {
+					free(raw);
+					return;
+				}
 				snprintf(json_str, len + 2, "%s\n", raw);
 				free(raw);
 			}
@@ -840,6 +877,10 @@ void ipc_notify_tags(Monitor *m) {
 					return;
 				len = strlen(raw);
 				json_str = malloc(len + 2);
+				if (!json_str) {
+					free(raw);
+					return;
+				}
 				snprintf(json_str, len + 2, "%s\n", raw);
 				free(raw);
 			}
@@ -870,6 +911,10 @@ void ipc_notify_all_monitors(void) {
 					return;
 				len = strlen(raw);
 				json_str = malloc(len + 2);
+				if (!json_str) {
+					free(raw);
+					return;
+				}
 				snprintf(json_str, len + 2, "%s\n", raw);
 				free(raw);
 			}
@@ -900,6 +945,10 @@ void ipc_notify_all_clients(void) {
 					return;
 				len = strlen(raw);
 				json_str = malloc(len + 2);
+				if (!json_str) {
+					free(raw);
+					return;
+				}
 				snprintf(json_str, len + 2, "%s\n", raw);
 				free(raw);
 			}
@@ -925,6 +974,10 @@ void ipc_notify_all_tags(void) {
 					return;
 				len = strlen(raw);
 				json_str = malloc(len + 2);
+				if (!json_str) {
+					free(raw);
+					return;
+				}
 				snprintf(json_str, len + 2, "%s\n", raw);
 				free(raw);
 			}
@@ -951,6 +1004,10 @@ void ipc_notify_keymode(void) {
 					return;
 				len = strlen(raw);
 				json_str = malloc(len + 2);
+				if (!json_str) {
+					free(raw);
+					return;
+				}
 				snprintf(json_str, len + 2, "%s\n", raw);
 				free(raw);
 			}
@@ -977,6 +1034,10 @@ void ipc_notify_kb_layout(void) {
 					return;
 				len = strlen(raw);
 				json_str = malloc(len + 2);
+				if (!json_str) {
+					free(raw);
+					return;
+				}
 				snprintf(json_str, len + 2, "%s\n", raw);
 				free(raw);
 			}
@@ -1012,6 +1073,7 @@ void ipc_init(struct wl_event_loop *event_loop) {
 	if (flags == -1 || fcntl(ipc_sock_fd, F_SETFD, flags | FD_CLOEXEC) == -1) {
 		wlr_log(WLR_ERROR, "failed to set FD_CLOEXEC on IPC socket");
 		close(ipc_sock_fd);
+		ipc_sock_fd = -1;
 		return;
 	}
 	// 设置 O_NONBLOCK
@@ -1019,6 +1081,7 @@ void ipc_init(struct wl_event_loop *event_loop) {
 	if (flags == -1 || fcntl(ipc_sock_fd, F_SETFL, flags | O_NONBLOCK) == -1) {
 		wlr_log(WLR_ERROR, "failed to set O_NONBLOCK on IPC socket");
 		close(ipc_sock_fd);
+		ipc_sock_fd = -1;
 		return;
 	}
 
@@ -1028,6 +1091,7 @@ void ipc_init(struct wl_event_loop *event_loop) {
 	unlink(ipc_socket_path);
 	if (bind(ipc_sock_fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
 		close(ipc_sock_fd);
+		ipc_sock_fd = -1;
 		return;
 	}
 	listen(ipc_sock_fd, 16);
@@ -1037,6 +1101,12 @@ void ipc_init(struct wl_event_loop *event_loop) {
 	ipc_event_source =
 		wl_event_loop_add_fd(event_loop, ipc_sock_fd, WL_EVENT_READABLE,
 							 ipc_handle_connection, event_loop);
+	if (!ipc_event_source) {
+		close(ipc_sock_fd);
+		ipc_sock_fd = -1;
+		unlink(ipc_socket_path);
+		unsetenv("MANGO_INSTANCE_SIGNATURE");
+	}
 }
 
 void ipc_cleanup(void) {

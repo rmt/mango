@@ -95,6 +95,9 @@ void dwl_ipc_manager_release(struct wl_client *client,
 
 static void dwl_ipc_output_destroy(struct wl_resource *resource) {
 	DwlIpcOutput *ipc_output = wl_resource_get_user_data(resource);
+	if (!ipc_output)
+		return;
+	wl_resource_set_user_data(resource, NULL);
 	wl_list_remove(&ipc_output->link);
 	free(ipc_output);
 }

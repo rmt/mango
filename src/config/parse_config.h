@@ -417,6 +417,7 @@ typedef int32_t (*FuncType)(const Arg *);
 Config config;
 
 bool parse_config_file(Config *config, const char *file_path, bool must_exist);
+void free_circle_layout(Config *config);
 bool apply_rule_to_state(Monitor *m, const ConfigMonitorRule *rule,
 						 struct wlr_output_state *state, int vrr, int custom);
 bool monitor_matches_rule(Monitor *m, const ConfigMonitorRule *rule);
@@ -1561,6 +1562,10 @@ bool parse_option(Config *config, char *key, char *value) {
 		}
 		int32_t float_count = count + 1; // 浮点数的数量是逗号数量加 1
 
+		free(config->scroller_proportion_preset);
+		config->scroller_proportion_preset = NULL;
+		config->scroller_proportion_preset_count = 0;
+
 		// 2. 动态分配内存，存储浮点数
 		config->scroller_proportion_preset =
 			(float *)malloc(float_count * sizeof(float));
@@ -1624,14 +1629,16 @@ bool parse_option(Config *config, char *key, char *value) {
 		}
 		int32_t string_count = count + 1; // 字符串的数量是逗号数量加 1
 
+		free_circle_layout(config);
+
 		// 2. 动态分配内存，存储字符串指针
 		config->circle_layout = (char **)malloc(string_count * sizeof(char *));
-		memset(config->circle_layout, 0, string_count * sizeof(char *));
 		if (!config->circle_layout) {
 			fprintf(stderr, "\033[1m\033[31m[ERROR]:\033[33m Memory "
 							"allocation failed\n");
 			return false;
 		}
+		memset(config->circle_layout, 0, string_count * sizeof(char *));
 
 		// 3. 解析 value 中的字符串
 		char *value_copy =
@@ -1764,6 +1771,7 @@ bool parse_option(Config *config, char *key, char *value) {
 	} else if (strcmp(key, "cursor_size") == 0) {
 		config->cursor_size = atoi(value);
 	} else if (strcmp(key, "cursor_theme") == 0) {
+		free(config->cursor_theme);
 		config->cursor_theme = strdup(value);
 	} else if (strcmp(key, "tab_bar_decorate_font_desc") == 0) {
 		config->tabdata.font_desc = strdup(value);
@@ -2079,15 +2087,16 @@ bool parse_option(Config *config, char *key, char *value) {
 			convert_hex_to_rgba(config->overlaycolor, color);
 		}
 	} else if (strcmp(key, "monitorrule") == 0) {
-		config->monitor_rules =
-			realloc(config->monitor_rules, (config->monitor_rules_count + 1) *
-											   sizeof(ConfigMonitorRule));
-		if (!config->monitor_rules) {
+		ConfigMonitorRule *new_monitor_rules = realloc(
+			config->monitor_rules,
+			(config->monitor_rules_count + 1) * sizeof(*config->monitor_rules));
+		if (!new_monitor_rules) {
 			fprintf(stderr,
 					"\033[1m\033[31m[ERROR]:\033[33m Failed to allocate "
 					"memory for monitor rules\n");
 			return false;
 		}
+		config->monitor_rules = new_monitor_rules;
 
 		ConfigMonitorRule *rule =
 			&config->monitor_rules[config->monitor_rules_count];
@@ -2168,15 +2177,16 @@ bool parse_option(Config *config, char *key, char *value) {
 		config->monitor_rules_count++;
 		return !parse_error;
 	} else if (strcmp(key, "tagrule") == 0) {
-		config->tag_rules =
-			realloc(config->tag_rules,
-					(config->tag_rules_count + 1) * sizeof(ConfigTagRule));
-		if (!config->tag_rules) {
+		ConfigTagRule *new_tag_rules = realloc(
+			config->tag_rules,
+			(config->tag_rules_count + 1) * sizeof(*config->tag_rules));
+		if (!new_tag_rules) {
 			fprintf(stderr,
 					"\033[1m\033[31m[ERROR]:\033[33m Failed to allocate "
 					"memory for tag rules\n");
 			return false;
 		}
+		config->tag_rules = new_tag_rules;
 
 		ConfigTagRule *rule = &config->tag_rules[config->tag_rules_count];
 		memset(rule, 0, sizeof(ConfigTagRule));
@@ -2257,15 +2267,16 @@ bool parse_option(Config *config, char *key, char *value) {
 		config->tag_rules_count++;
 		return !parse_error;
 	} else if (strcmp(key, "layerrule") == 0) {
-		config->layer_rules =
-			realloc(config->layer_rules,
-					(config->layer_rules_count + 1) * sizeof(ConfigLayerRule));
-		if (!config->layer_rules) {
+		ConfigLayerRule *new_layer_rules = realloc(
+			config->layer_rules,
+			(config->layer_rules_count + 1) * sizeof(*config->layer_rules));
+		if (!new_layer_rules) {
 			fprintf(stderr,
 					"\033[1m\033[31m[ERROR]:\033[33m Failed to allocate "
 					"memory for layer rules\n");
 			return false;
 		}
+		config->layer_rules = new_layer_rules;
 
 		ConfigLayerRule *rule = &config->layer_rules[config->layer_rules_count];
 		memset(rule, 0, sizeof(ConfigLayerRule));
@@ -2322,15 +2333,16 @@ bool parse_option(Config *config, char *key, char *value) {
 		config->layer_rules_count++;
 		return !parse_error;
 	} else if (strcmp(key, "windowrule") == 0) {
-		config->window_rules =
-			realloc(config->window_rules,
-					(config->window_rules_count + 1) * sizeof(ConfigWinRule));
-		if (!config->window_rules) {
+		ConfigWinRule *new_window_rules = realloc(
+			config->window_rules,
+			(config->window_rules_count + 1) * sizeof(*config->window_rules));
+		if (!new_window_rules) {
 			fprintf(stderr,
 					"\033[1m\033[31m[ERROR]:\033[33m Failed to allocate "
 					"memory for window rules\n");
 			return false;
 		}
+		config->window_rules = new_window_rules;
 
 		ConfigWinRule *rule = &config->window_rules[config->window_rules_count];
 		memset(rule, 0, sizeof(ConfigWinRule));
@@ -2533,9 +2545,9 @@ bool parse_option(Config *config, char *key, char *value) {
 		env->type = strdup(env_type);
 		env->value = strdup(env_value);
 
-		config->env =
-			realloc(config->env, (config->env_count + 1) * sizeof(ConfigEnv));
-		if (!config->env) {
+		ConfigEnv **new_env =
+			realloc(config->env, (config->env_count + 1) * sizeof(*config->env));
+		if (!new_env) {
 			free(env->type);
 			free(env->value);
 			free(env);
@@ -2543,6 +2555,7 @@ bool parse_option(Config *config, char *key, char *value) {
 							"allocate memory for env\n");
 			return false;
 		}
+		config->env = new_env;
 
 		config->env[config->env_count] = env;
 		config->env_count++;
@@ -2590,15 +2603,16 @@ bool parse_option(Config *config, char *key, char *value) {
 		config->exec_once_count++;
 
 	} else if (regex_match("^bind[s|l|r|p]*$", key)) {
-		config->key_bindings =
-			realloc(config->key_bindings,
-					(config->key_bindings_count + 1) * sizeof(KeyBinding));
-		if (!config->key_bindings) {
+		KeyBinding *new_key_bindings = realloc(
+			config->key_bindings,
+			(config->key_bindings_count + 1) * sizeof(*config->key_bindings));
+		if (!new_key_bindings) {
 			fprintf(stderr,
 					"\033[1m\033[31m[ERROR]:\033[33m Failed to allocate "
 					"memory for key bindings\n");
 			return false;
 		}
+		config->key_bindings = new_key_bindings;
 
 		KeyBinding *binding = &config->key_bindings[config->key_bindings_count];
 		memset(binding, 0, sizeof(KeyBinding));
@@ -2684,15 +2698,16 @@ bool parse_option(Config *config, char *key, char *value) {
 		}
 
 	} else if (strncmp(key, "mousebind", 9) == 0) {
-		config->mouse_bindings =
-			realloc(config->mouse_bindings,
-					(config->mouse_bindings_count + 1) * sizeof(MouseBinding));
-		if (!config->mouse_bindings) {
+		MouseBinding *new_mouse_bindings = realloc(
+			config->mouse_bindings,
+			(config->mouse_bindings_count + 1) * sizeof(*config->mouse_bindings));
+		if (!new_mouse_bindings) {
 			fprintf(stderr,
 					"\033[1m\033[31m[ERROR]:\033[33m Failed to allocate "
 					"memory for mouse bindings\n");
 			return false;
 		}
+		config->mouse_bindings = new_mouse_bindings;
 
 		MouseBinding *binding =
 			&config->mouse_bindings[config->mouse_bindings_count];
@@ -2776,15 +2791,16 @@ bool parse_option(Config *config, char *key, char *value) {
 			config->mouse_bindings_count++;
 		}
 	} else if (strncmp(key, "axisbind", 8) == 0) {
-		config->axis_bindings =
-			realloc(config->axis_bindings,
-					(config->axis_bindings_count + 1) * sizeof(AxisBinding));
-		if (!config->axis_bindings) {
+		AxisBinding *new_axis_bindings = realloc(
+			config->axis_bindings,
+			(config->axis_bindings_count + 1) * sizeof(*config->axis_bindings));
+		if (!new_axis_bindings) {
 			fprintf(stderr,
 					"\033[1m\033[31m[ERROR]:\033[33m Failed to allocate "
 					"memory for axis bindings\n");
 			return false;
 		}
+		config->axis_bindings = new_axis_bindings;
 
 		AxisBinding *binding =
 			&config->axis_bindings[config->axis_bindings_count];
@@ -2851,15 +2867,16 @@ bool parse_option(Config *config, char *key, char *value) {
 		}
 
 	} else if (strncmp(key, "switchbind", 10) == 0) {
-		config->switch_bindings = realloc(config->switch_bindings,
-										  (config->switch_bindings_count + 1) *
-											  sizeof(SwitchBinding));
-		if (!config->switch_bindings) {
+		SwitchBinding *new_switch_bindings = realloc(
+			config->switch_bindings,
+			(config->switch_bindings_count + 1) * sizeof(*config->switch_bindings));
+		if (!new_switch_bindings) {
 			fprintf(stderr,
 					"\033[1m\033[31m[ERROR]:\033[33m Failed to allocate "
 					"memory for switch bindings\n");
 			return false;
 		}
+		config->switch_bindings = new_switch_bindings;
 
 		SwitchBinding *binding =
 			&config->switch_bindings[config->switch_bindings_count];
@@ -2919,15 +2936,16 @@ bool parse_option(Config *config, char *key, char *value) {
 		}
 
 	} else if (strncmp(key, "gesturebind", 11) == 0) {
-		config->gesture_bindings = realloc(
+		GestureBinding *new_gesture_bindings = realloc(
 			config->gesture_bindings,
-			(config->gesture_bindings_count + 1) * sizeof(GestureBinding));
-		if (!config->gesture_bindings) {
+			(config->gesture_bindings_count + 1) * sizeof(*config->gesture_bindings));
+		if (!new_gesture_bindings) {
 			fprintf(stderr,
 					"\033[1m\033[31m[ERROR]:\033[33m Failed to allocate "
 					"memory for axis gesturebind\n");
 			return false;
 		}
+		config->gesture_bindings = new_gesture_bindings;
 
 		GestureBinding *binding =
 			&config->gesture_bindings[config->gesture_bindings_count];
@@ -3185,6 +3203,12 @@ void free_config(void) {
 			// 释放 globalkeybinding 的 arg.v（如果动态分配）
 			if (rule->globalkeybinding.arg.v) {
 				free((void *)rule->globalkeybinding.arg.v);
+			}
+			if (rule->globalkeybinding.arg.v2) {
+				free((void *)rule->globalkeybinding.arg.v2);
+			}
+			if (rule->globalkeybinding.arg.v3) {
+				free((void *)rule->globalkeybinding.arg.v3);
 			}
 		}
 		free(config.window_rules);
@@ -3887,13 +3911,14 @@ void set_default_key_bindings(Config *config) {
 		sizeof(default_key_bindings) / sizeof(KeyBinding);
 
 	// 重新分配内存以容纳新的默认按键绑定
-	config->key_bindings =
-		realloc(config->key_bindings,
-				(config->key_bindings_count + default_key_bindings_count) *
-					sizeof(KeyBinding));
-	if (!config->key_bindings) {
+	KeyBinding *new_key_bindings = realloc(
+		config->key_bindings,
+		(config->key_bindings_count + default_key_bindings_count) *
+			sizeof(*config->key_bindings));
+	if (!new_key_bindings) {
 		return;
 	}
+	config->key_bindings = new_key_bindings;
 
 	// 将默认按键绑定复制到配置的按键绑定数组中
 	for (size_t i = 0; i < default_key_bindings_count; i++) {

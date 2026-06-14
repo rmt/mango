@@ -135,14 +135,20 @@ static void remove_workspace_by_tag(uint32_t tag, Monitor *m) {
 static void add_workspace_by_tag(int32_t tag, Monitor *m) {
 	const char *name = get_name_from_tag(tag);
 
-	struct workspace *workspace = ecalloc(1, sizeof(*workspace));
-	wl_list_append(&workspaces, &workspace->link);
+	if (!ext_manager || !m || !m->ext_group || !name)
+		return;
 
+	struct workspace *workspace = ecalloc(1, sizeof(*workspace));
 	workspace->tag = tag;
 	workspace->m = m;
 	workspace->ext_workspace = wlr_ext_workspace_handle_v1_create(
 		ext_manager, name, EXT_WORKSPACE_ENABLE_CAPS);
+	if (!workspace->ext_workspace) {
+		free(workspace);
+		return;
+	}
 
+	wl_list_append(&workspaces, &workspace->link);
 	workspace->ext_workspace->data = workspace;
 
 	wlr_ext_workspace_handle_v1_set_group(workspace->ext_workspace,
@@ -205,9 +211,11 @@ void refresh_monitors_workspaces_status(Monitor *m) {
 }
 
 void workspaces_init() {
-	ext_manager = wlr_ext_workspace_manager_v1_create(dpy, 1);
-
 	wl_list_init(&workspaces);
+
+	ext_manager = wlr_ext_workspace_manager_v1_create(dpy, 1);
+	if (!ext_manager)
+		return;
 
 	wl_signal_add(&ext_manager->events.commit, &ext_manager_commit_listener);
 }

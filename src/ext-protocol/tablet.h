@@ -353,6 +353,10 @@ void tablettoolproximity(struct wl_listener *listener, void *data) {
 			return;
 		}
 		tool->tool_v2 = wlr_tablet_tool_create(tablet_mgr, seat, wlr_tool);
+		if (!tool->tool_v2) {
+			free(tool);
+			return;
+		}
 		tool->surface_destroy.notify = destroytabletsurfacenotify;
 		tool->destroy.notify = destroytablettool;
 		tool->set_cursor.notify = tablettoolsetcursor;
