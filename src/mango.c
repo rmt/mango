@@ -2960,6 +2960,8 @@ void destroydecoration(struct wl_listener *listener, void *data) {
 
 	UNLISTEN(&c->destroy_decoration);
 	UNLISTEN(&c->set_decoration_mode);
+	if (c->decoration == data)
+		c->decoration = NULL;
 }
 
 static bool popup_unconstrain(Popup *popup) {
@@ -3849,6 +3851,9 @@ destroynotify(struct wl_listener *listener, void *data) {
 	UNLISTEN(&c->fullscreen);
 	UNLISTEN(&c->maximize);
 	UNLISTEN(&c->minimize);
+	UNLISTEN(&c->destroy_decoration);
+	UNLISTEN(&c->set_decoration_mode);
+	c->decoration = NULL;
 #ifdef XWAYLAND
 	if (c->type != XDGShell) {
 		UNLISTEN(&c->activate);
