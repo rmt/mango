@@ -5231,16 +5231,22 @@ void printstatus(enum ipc_watch_type type) {
 
 void powermgrsetmode(struct wl_listener *listener, void *data) {
 	struct wlr_output_power_v1_set_mode_event *event = data;
-	struct wlr_output_state state = {0};
+	struct wlr_output_state state;
 	Monitor *m = event->output->data;
+	bool enabled = event->mode == ZWLR_OUTPUT_POWER_V1_MODE_ON;
 
 	if (!m)
 		return;
 
-	wlr_output_state_set_enabled(&state, event->mode);
-	wlr_output_commit_state(m->wlr_output, &state);
+	wlr_output_state_init(&state);
+	wlr_output_state_set_enabled(&state, enabled);
+	if (!wlr_output_commit_state(m->wlr_output, &state)) {
+		wlr_output_state_finish(&state);
+		return;
+	}
+	wlr_output_state_finish(&state);
 
-	m->asleep = !event->mode;
+	m->asleep = !enabled;
 	updatemons(NULL, NULL);
 }
 
@@ -6819,6 +6825,16 @@ void updatemons(struct wl_listener *listener, void *data) {
 			wlr_output_layout_add_auto(output_layout, m->wlr_output);
 	}
 
+	if (!selmon || !selmon->wlr_output || !selmon->wlr_output->enabled) {
+		selmon = NULL;
+		wl_list_for_each(m, &mons, link) {
+			if (m->wlr_output && m->wlr_output->enabled) {
+				selmon = m;
+				break;
+			}
+		}
+	}
+
 	/* Now that we update the output layout we can get its box */
 	wlr_output_layout_get_box(output_layout, NULL, &sgeom);
 
@@ -7154,7 +7170,7 @@ void activatex11(struct wl_listener *listener, void *data) {
 	struct wlr_xwayland_surface *xsurface = c ? c->surface.xwayland : NULL;
 	bool need_arrange = false;
 
-	if (!c || !xsurface || c->iskilling || !c->foreign_toplevel ||
+	if (locked || !c || !xsurface || c->iskilling || !c->foreign_toplevel ||
 		client_is_unmanaged(c))
 		return;
 
