@@ -942,6 +942,7 @@ static struct wl_display *dpy;
 static struct wl_event_loop *event_loop;
 static struct wlr_backend *backend;
 static struct wlr_backend *headless_backend;
+static struct wlr_output *fallback_output;
 static struct wlr_scene *scene;
 static struct wlr_scene_tree *layers[NUM_LAYERS];
 static struct wlr_renderer *drw;
@@ -2672,19 +2673,30 @@ void cleanupmon(struct wl_listener *listener, void *data) {
 	}
 	cleanup_workspaces_by_monitor(m);
 
+	bool was_fallback = m->wlr_output == fallback_output;
+
 	UNLISTEN(&m->destroy);
 	UNLISTEN(&m->frame);
 	wl_list_remove(&m->link);
 	UNLISTEN(&m->request_state);
+
+	if (was_fallback)
+		fallback_output = NULL;
+	else if (wl_list_empty(&mons) && headless_backend) {
+		fallback_output = wlr_headless_add_output(headless_backend, 1920, 1080);
+		if (fallback_output)
+			wlr_log(WLR_INFO, "Created fallback headless output");
+	}
+
 	if (m->lock_surface)
 		destroylocksurface(&m->destroy_lock_surface, NULL);
+	closemon(m);
+
 	wl_list_for_each_safe(ipc_output, ipc_tmp, &m->dwl_ipc_outputs, link)
 		wl_resource_destroy(ipc_output->resource);
 	m->wlr_output->data = NULL;
 	wlr_output_layout_remove(output_layout, m->wlr_output);
 	wlr_scene_output_destroy(m->scene_output);
-
-	closemon(m);
 	if (m->blur) {
 		wlr_scene_node_destroy(&m->blur->node);
 		m->blur = NULL;
@@ -3550,6 +3562,13 @@ void createmon(struct wl_listener *listener, void *data) {
 		add_workspace_by_tag(i, m);
 	}
 
+	if (!wlr_output_is_headless(wlr_output) && fallback_output) {
+		struct wlr_output *output = fallback_output;
+		fallback_output = NULL;
+		wlr_output_destroy(output);
+		wlr_log(WLR_INFO, "Destroyed fallback headless output");
+	}
+
 	printstatus(IPC_WATCH_ARRANGGE);
 }
 
@@ -4171,27 +4190,18 @@ void requestmonstate(struct wl_listener *listener, void *data) {
 	Monitor *m = wl_container_of(listener, m, request_state);
 	const struct wlr_output_event_request_state *event = data;
 
-	if (event->state->committed == WLR_OUTPUT_STATE_MODE) {
-		switch (event->state->mode_type) {
-		case WLR_OUTPUT_STATE_MODE_FIXED:
-			wlr_output_state_set_mode(&m->pending, event->state->mode);
-			break;
-		case WLR_OUTPUT_STATE_MODE_CUSTOM:
-			wlr_output_state_set_custom_mode(&m->pending,
-											 event->state->custom_mode.width,
-											 event->state->custom_mode.height,
-											 event->state->custom_mode.refresh);
-			break;
-		}
-		updatemons(NULL, NULL);
-		wlr_output_schedule_frame(m->wlr_output);
+	if (!m || !event || !event->state)
 		return;
-	}
 
 	if (!wlr_output_commit_state(m->wlr_output, event->state)) {
 		wlr_log(WLR_ERROR,
 				"Backend requested a new state that could not be applied");
+		return;
 	}
+
+	updatemons(NULL, NULL);
+	if (m->wlr_output->enabled)
+		wlr_output_schedule_frame(m->wlr_output);
 }
 
 void inputdevice(struct wl_listener *listener, void *data) {
