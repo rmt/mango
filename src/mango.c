@@ -1761,9 +1761,14 @@ void applyrules(Client *c) {
 		return;
 
 	// apply swallow rule
+	bool initial_commit = false;
+#ifdef XWAYLAND
+	if (!client_is_x11(c))
+#endif
+		initial_commit = c->surface.xdg && c->surface.xdg->initial_commit;
 	c->pid = client_get_pid(c);
 	if (!c->noswallow && !c->isfloating && !client_is_float_type(c) &&
-		!c->surface.xdg->initial_commit) {
+		!initial_commit) {
 		Client *p = termforwin(c);
 		if (p && !p->isminimized) {
 			c->swallowedby = p;
@@ -3933,6 +3938,13 @@ destroynotify(struct wl_listener *listener, void *data) {
 		UNLISTEN(&c->configure);
 		UNLISTEN(&c->dissociate);
 		UNLISTEN(&c->set_hints);
+		/* These are normally removed by dissociatex11()/unmapnotify(), but the
+		 * Client owns the listener storage, so detach them before free as a last
+		 * line of defense against Xwayland destroy/dissociate ordering races. */
+		UNLISTEN(&c->map);
+		UNLISTEN(&c->unmap);
+		UNLISTEN(&c->commmitx11);
+		UNLISTEN(&c->set_geometry);
 	} else
 #endif
 	{
@@ -7281,6 +7293,11 @@ void associatex11(struct wl_listener *listener, void *data) {
 	Client *c = wl_container_of(listener, c, associate);
 	struct wlr_surface *surface = client_surface(c);
 
+	UNLISTEN(&c->map);
+	UNLISTEN(&c->unmap);
+	UNLISTEN(&c->commmitx11);
+	UNLISTEN(&c->set_geometry);
+
 	if (!surface)
 		return;
 	LISTEN(&surface->events.map, &c->map, mapnotify);
@@ -7293,6 +7310,10 @@ void dissociatex11(struct wl_listener *listener, void *data) {
 	UNLISTEN(&c->map);
 	UNLISTEN(&c->unmap);
 	UNLISTEN(&c->commmitx11);
+	/* set_geometry is attached for mapped unmanaged X11 windows. A dissociated
+	 * surface must not move a stale scene node if wlroots emits geometry changes
+	 * before the Xwayland surface itself is destroyed. */
+	UNLISTEN(&c->set_geometry);
 }
 
 void sethints(struct wl_listener *listener, void *data) {
