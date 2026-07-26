@@ -179,6 +179,10 @@ Docked floating clients can also be redocked:
 - Dropping outside all zones snaps back to the current or default zone.
 - The client remains floating in all cases.
 
+### Monitor Changes
+
+When an output is temporarily disconnected, mangowm remembers its active tag state and restores it when the output returns. Zone-assigned floating clients are realigned when monitor ownership, geometry, or usable area changes.
+
 ---
 
 ## Switching Layouts

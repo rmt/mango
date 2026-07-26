@@ -1226,11 +1226,82 @@ static struct wl_event_source *sync_keymap;
 #include "layout/scroll.h"
 #include "layout/vertical.h"
 
+#define MONITOR_STATE_NAME_LEN 128
+typedef struct {
+	char name[MONITOR_STATE_NAME_LEN];
+	uint32_t seltags;
+	uint32_t tagset[2];
+	uint32_t curtag;
+	uint32_t prevtag;
+	bool valid;
+} SavedMonitorState;
+
+static SavedMonitorState saved_monitor_states[16];
+
+static SavedMonitorState *monitor_saved_state(Monitor *m, bool create) {
+	SavedMonitorState *empty = NULL;
+	uint32_t i;
+
+	if (!m || !m->wlr_output || !m->wlr_output->name)
+		return NULL;
+
+	for (i = 0; i < LENGTH(saved_monitor_states); i++) {
+		if (!saved_monitor_states[i].valid) {
+			if (!empty)
+				empty = &saved_monitor_states[i];
+			continue;
+		}
+		if (strcmp(saved_monitor_states[i].name, m->wlr_output->name) == 0)
+			return &saved_monitor_states[i];
+	}
+
+	if (!create || !empty)
+		return NULL;
+
+	strncpy(empty->name, m->wlr_output->name, sizeof(empty->name) - 1);
+	empty->name[sizeof(empty->name) - 1] = '\0';
+	empty->valid = true;
+	return empty;
+}
+
+static void save_monitor_tag_state(Monitor *m) {
+	SavedMonitorState *state = monitor_saved_state(m, true);
+
+	if (!state || !m->pertag)
+		return;
+
+	state->seltags = m->seltags;
+	state->tagset[0] = m->tagset[0];
+	state->tagset[1] = m->tagset[1];
+	state->curtag = m->pertag->curtag;
+	state->prevtag = m->pertag->prevtag;
+}
+
+static bool restore_monitor_tag_state(Monitor *m) {
+	SavedMonitorState *state = monitor_saved_state(m, false);
+
+	if (!state || !m->pertag || !state->valid || !(state->tagset[state->seltags] & TAGMASK))
+		return false;
+
+	m->seltags = state->seltags;
+	m->tagset[0] = state->tagset[0] & TAGMASK;
+	m->tagset[1] = state->tagset[1] & TAGMASK;
+	m->pertag->curtag = state->curtag;
+	m->pertag->prevtag = state->prevtag;
+	return true;
+}
+
 void client_change_mon(Client *c, Monitor *m) {
 	setmon(c, m, c->tags, true);
 	if (c->isfloating) {
-		c->float_geom = c->geom =
-			setclient_coordinate_center(c, c->mon, c->geom, 0, 0);
+		const ConfigZone *zone = zones_client_has_valid_zone(c)
+								   ? zones_find(c->zone_name)
+								   : NULL;
+		if (zone)
+			c->float_geom = c->geom = zones_align_floating(c, zone);
+		else
+			c->float_geom = c->geom =
+				setclient_coordinate_center(c, c->mon, c->geom, 0, 0);
 	}
 }
 
@@ -2134,6 +2205,8 @@ void arrangelayers(Monitor *m) {
 
 	if (!wlr_box_equal(&usable_area, &m->w)) {
 		m->w = usable_area;
+		if (m->pertag->ltidxs[m->pertag->curtag]->id == ZONES)
+			zones_realign_visible_floating(m);
 		arrange(m, false, false);
 	}
 
@@ -2858,6 +2931,7 @@ void cleanupmon(struct wl_listener *listener, void *data) {
 	LayerSurface *l = NULL, *tmp = NULL;
 	uint32_t i;
 
+	save_monitor_tag_state(m);
 	m->iscleanuping = true;
 
 	/* m->layers[i] are intentionally not unlinked */
@@ -2920,6 +2994,7 @@ void cleanupmon(struct wl_listener *listener, void *data) {
 }
 
 void closemon(Monitor *m) {
+	save_monitor_tag_state(m);
 	/* update selmon if needed and
 	 * move closed monitor's clients to the focused one */
 	Client *c = NULL;
@@ -3837,7 +3912,7 @@ void createmon(struct wl_listener *listener, void *data) {
 		m->pertag->curtag = m->pertag->prevtag = chvt_backup_tag;
 		chvt_backup_tag = 0;
 		memset(chvt_backup_selmon, 0, sizeof(chvt_backup_selmon));
-	} else {
+	} else if (!restore_monitor_tag_state(m)) {
 		m->tagset[0] = m->tagset[1] = 1;
 		m->pertag->curtag = m->pertag->prevtag = 1;
 	}
@@ -7488,6 +7563,8 @@ void updatemons(struct wl_listener *listener, void *data) {
 
 		/* Calculate the effective monitor geometry to use for clients */
 		arrangelayers(m);
+		if (m->pertag->ltidxs[m->pertag->curtag]->id == ZONES)
+			zones_realign_visible_floating(m);
 		/* Don't move clients to the left output when plugging monitors */
 		arrange(m, false, false);
 		/* make sure fullscreen clients have the right size */

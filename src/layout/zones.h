@@ -273,6 +273,29 @@ static void zones_assign_missing_visible(Monitor *m) {
 	zones_assign_visible_by_geometry(m, false);
 }
 
+static void zones_realign_visible_floating(Monitor *m) {
+	Client *c;
+	const ConfigZone *zone;
+
+	if (!m || config.zones_count <= 0)
+		return;
+
+	wl_list_for_each(c, &clients, link) {
+		if (!VISIBLEON(c, m) || !c->isfloating || c->iskilling ||
+			!zones_client_has_valid_zone(c))
+			continue;
+
+		zone = zones_find(c->zone_name);
+		if (!zone)
+			continue;
+
+		c->geom = zones_align_floating(c, zone);
+		c->iscustompos = 1;
+		c->float_geom = c->geom;
+		resize(c, c->geom, 0);
+	}
+}
+
 static void zones_clear_visible(Monitor *m) {
 	Client *c;
 
