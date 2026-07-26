@@ -459,6 +459,7 @@ struct Client {
 	bool is_clip_to_hide;
 	bool drag_to_tile;
 	bool drag_to_zone;
+	bool drag_was_tiled;
 	bool scratchpad_switching_mon;
 	bool fake_no_border;
 	int32_t nofocus;
@@ -752,6 +753,8 @@ static void setcursorshape(struct wl_listener *listener, void *data);
 static void focusclient(Client *c, int32_t lift);
 
 static void setborder_color(Client *c);
+static void client_reparent_by_stack(Client *c, bool force_top,
+									 bool raise_overlay);
 static Client *focustop(Monitor *m);
 static void fullscreennotify(struct wl_listener *listener, void *data);
 static void gpureset(struct wl_listener *listener, void *data);
@@ -1922,10 +1925,8 @@ void applyrules(Client *c) {
 	}
 
 	// apply overlay rule
-	if (c->isoverlay && c->scene) {
-		wlr_scene_node_reparent(&c->scene->node, layers[LyrOverlay]);
-		wlr_scene_node_raise_to_top(&c->scene->node);
-	}
+	if (c->isoverlay && c->scene)
+		client_reparent_by_stack(c, false, true);
 }
 
 void arrangelayer(Monitor *m, struct wl_list *list, struct wlr_box *usable_area,
@@ -2377,6 +2378,35 @@ void hold_end(struct wl_listener *listener, void *data) {
 										  event->time_msec, event->cancelled);
 }
 
+static void client_reparent_by_stack(Client *c, bool force_top,
+									 bool raise_overlay) {
+	if (!c || !c->scene)
+		return;
+
+	int32_t layer =
+		c->isoverlay ? LyrOverlay
+		: force_top || c->isfullscreen || client_should_overtop(c) ||
+				(c->isfloating && !zones_client_is_docked_floating(c))
+			? LyrTop
+		: c->ismaximizescreen ? LyrMaximize
+							 : LyrTile;
+
+	Client *head = c;
+	while (head->group_prev)
+		head = head->group_prev;
+
+	for (Client *cur = head; cur; cur = cur->group_next) {
+		if (cur->group_bar)
+			wlr_scene_node_reparent(&cur->group_bar->scene_buffer->node,
+									layers[layer]);
+		if (cur->scene)
+			wlr_scene_node_reparent(&cur->scene->node, layers[layer]);
+	}
+
+	if (raise_overlay && layer == LyrOverlay)
+		client_raise_group(c);
+}
+
 static void hide_zone_droparea(void) {
 	dropzone = NULL;
 	if (!zone_droparea)
@@ -2437,8 +2467,28 @@ void place_drag_tile_client(Client *c) {
 		: NULL;
 
 	if (c && c->drag_to_zone && layout && layout->id == ZONES) {
-		if (dropzone)
-			zones_set_client_zone(c, (const ConfigZone *)dropzone);
+		const ConfigZone *drop_zone = (const ConfigZone *)dropzone;
+		const ConfigZone *zone = drop_zone;
+		bool same_zone = zone && c->zone_name &&
+						 zones_name_equals(c->zone_name, zone->name);
+
+		if (!c->drag_was_tiled && c->isfloating) {
+			if (!zone)
+				zone = zones_client_has_valid_zone(c) ? zones_find(c->zone_name)
+												 : zones_default_for_monitor(c->mon);
+			if (zone && (!same_zone || !drop_zone) && zones_set_client_zone(c, zone)) {
+				c->geom = zones_align_floating(c, zone);
+				c->iscustompos = 1;
+				resize(c, c->geom, 0);
+			}
+			c->float_geom = c->geom;
+			client_reparent_by_stack(c, false, false);
+			hide_zone_droparea();
+			return;
+		}
+
+		if (zone)
+			zones_set_client_zone(c, zone);
 		setfloating(c, 0);
 		hide_zone_droparea();
 		return;
@@ -2616,13 +2666,16 @@ bool handle_buttonpress(struct wlr_pointer_button_event *event) {
 			last_apply_drap_time = 0;
 			if ((tmpc->drag_to_tile && config.drag_tile_to_tile) ||
 				tmpc->drag_to_zone) {
+				bool restore_float_geom = tmpc->drag_to_tile || tmpc->drag_was_tiled;
 				place_drag_tile_client(tmpc);
-				tmpc->float_geom = tmpc->drag_tile_float_backup_geom;
+				if (restore_float_geom)
+					tmpc->float_geom = tmpc->drag_tile_float_backup_geom;
 			} else {
 				apply_window_snap(tmpc);
 			}
 			tmpc->drag_to_tile = false;
 			tmpc->drag_to_zone = false;
+			tmpc->drag_was_tiled = false;
 			hide_zone_droparea();
 			if (dropc) {
 				dropc->enable_drop_area_draw = false;
@@ -4296,7 +4349,8 @@ void focusclient(Client *c, int32_t lift) {
 		return;
 
 	if (selmon && selmon->sel && selmon->sel != c &&
-		zones_client_is_docked_floating(selmon->sel) && !selmon->sel->isoverlay)
+		zones_client_is_docked_floating(selmon->sel) && !selmon->sel->isoverlay &&
+		zones_clients_share_zone(selmon->sel, c))
 		wlr_scene_node_lower_to_bottom(&selmon->sel->scene->node);
 
 	/* Raise client in stacking order if requested */
@@ -4909,6 +4963,7 @@ void init_client_properties(Client *c) {
 	c->is_pending_open_animation = true;
 	c->drag_to_tile = false;
 	c->drag_to_zone = false;
+	c->drag_was_tiled = false;
 	c->scratchpad_switching_mon = false;
 	c->fake_no_border = false;
 	c->focused_opacity = config.focused_opacity;
@@ -6059,7 +6114,7 @@ setfloating(Client *c, int32_t floating) {
 		}
 	}
 
-	client_reparent_group(c);
+	client_reparent_by_stack(c, false, false);
 
 	if (c->isfloating) {
 		set_size_per(c->mon, c);
@@ -6155,7 +6210,7 @@ void setmaximizescreen(Client *c, int32_t maximizescreen, bool rearrange) {
 			setfloating(c, 1);
 	}
 
-	client_reparent_group(c);
+	client_reparent_by_stack(c, false, false);
 
 	if (!c->force_fakemaximize && !c->ismaximizescreen) {
 		client_set_maximized(c, false);
@@ -6227,7 +6282,7 @@ void setfullscreen(Client *c, int32_t fullscreen,
 			setfloating(c, 1);
 	}
 
-	client_reparent_group(c);
+	client_reparent_by_stack(c, fullscreen, false);
 	check_vrr_enable(c);
 
 	if (rearrange)

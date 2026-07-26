@@ -359,18 +359,8 @@ static bool focuszone_candidate(Client *c, const char *zones) {
 		   focuszone_token_matches(zones, c->zone_name);
 }
 
-static Client *next_focuszone_candidate(const char *zones, Client *after) {
+static Client *top_focuszone_candidate(const char *zones) {
 	Client *c = NULL;
-	bool seen_after = after == NULL;
-
-	wl_list_for_each(c, &fstack, flink) {
-		if (!focuszone_candidate(c, zones))
-			continue;
-		if (seen_after)
-			return c;
-		if (c == after)
-			seen_after = true;
-	}
 
 	wl_list_for_each(c, &fstack, flink) {
 		if (focuszone_candidate(c, zones))
@@ -378,6 +368,18 @@ static Client *next_focuszone_candidate(const char *zones, Client *after) {
 	}
 
 	return NULL;
+}
+
+static Client *bottom_focuszone_candidate(const char *zones) {
+	Client *c = NULL;
+	Client *bottom = NULL;
+
+	wl_list_for_each(c, &fstack, flink) {
+		if (focuszone_candidate(c, zones))
+			bottom = c;
+	}
+
+	return bottom;
 }
 
 void focuszone(const Arg *arg) {
@@ -390,10 +392,9 @@ void focuszone(const Arg *arg) {
 		return;
 
 	current = selmon->sel;
-	if (focuszone_candidate(current, arg->v))
-		target = next_focuszone_candidate(arg->v, current);
-	else
-		target = next_focuszone_candidate(arg->v, NULL);
+	target = top_focuszone_candidate(arg->v);
+	if (target && target == current)
+		target = bottom_focuszone_candidate(arg->v);
 
 	if (!target)
 		return;
@@ -609,18 +610,26 @@ void moveresize(const Arg *arg) {
 		grabc = NULL;
 		return;
 	}
-	if (grabc->isfloating == 0 && arg->ui == CurMove) {
+	if (arg->ui == CurMove) {
 		const Layout *layout =
 			grabc->mon->pertag->ltidxs[grabc->mon->pertag->curtag];
 
-		grabc->drag_to_zone = layout && layout->id == ZONES;
-		grabc->drag_to_tile = !grabc->drag_to_zone;
-		exit_scroller_stack(grabc);
-		setfloating(grabc, 1);
-		grabc->drag_tile_float_backup_geom = grabc->float_geom;
-		grabc->old_stack_inner_per = 0.0f;
-		grabc->old_master_inner_per = 0.0f;
-		set_size_per(grabc->mon, grabc);
+		if (grabc->isfloating && layout && layout->id == ZONES &&
+			zones_client_has_valid_zone(grabc)) {
+			grabc->drag_to_zone = true;
+			grabc->drag_to_tile = false;
+			grabc->drag_was_tiled = false;
+		} else if (grabc->isfloating == 0) {
+			grabc->drag_to_zone = layout && layout->id == ZONES;
+			grabc->drag_to_tile = !grabc->drag_to_zone;
+			grabc->drag_was_tiled = true;
+			exit_scroller_stack(grabc);
+			setfloating(grabc, 1);
+			grabc->drag_tile_float_backup_geom = grabc->float_geom;
+			grabc->old_stack_inner_per = 0.0f;
+			grabc->old_master_inner_per = 0.0f;
+			set_size_per(grabc->mon, grabc);
+		}
 	}
 
 	if (grabc && grabc->drag_to_tile && config.drag_tile_to_tile &&
@@ -848,6 +857,8 @@ void setlayout(const Arg *arg) {
 		if (strcmp(layouts[jk].name, arg->v) == 0) {
 			set_monitor_layout(selmon, &layouts[jk]);
 			clear_fullscreen_and_maximized_state(selmon);
+			if (selmon->pertag->ltidxs[selmon->pertag->curtag]->id == ZONES)
+				zones_assign_missing_visible(selmon);
 			arrange(selmon, false, false);
 			printstatus(IPC_WATCH_ARRANGGE);
 			return;
@@ -1358,6 +1369,8 @@ void switch_layout(const Arg *arg) {
 			}
 		}
 		clear_fullscreen_and_maximized_state(selmon);
+		if (selmon->pertag->ltidxs[selmon->pertag->curtag]->id == ZONES)
+			zones_assign_missing_visible(selmon);
 		arrange(selmon, false, false);
 		printstatus(IPC_WATCH_ARRANGGE);
 		return;
@@ -1370,6 +1383,8 @@ void switch_layout(const Arg *arg) {
 							   jk == LENGTH(layouts) - 1 ? &layouts[0]
 													  : &layouts[jk + 1]);
 			clear_fullscreen_and_maximized_state(selmon);
+			if (selmon->pertag->ltidxs[selmon->pertag->curtag]->id == ZONES)
+				zones_assign_missing_visible(selmon);
 			arrange(selmon, false, false);
 			printstatus(IPC_WATCH_ARRANGGE);
 			return;
@@ -1694,9 +1709,7 @@ void toggleoverlay(const Arg *arg) {
 
 	c->isoverlay ^= 1;
 
-	client_reparent_group(c);
-	if (c->isoverlay)
-		client_raise_group(c);
+	client_reparent_by_stack(c, false, true);
 	setborder_color(c);
 	return;
 }
@@ -2375,15 +2388,13 @@ void movetozone(const Arg *arg) {
 	if (!zone)
 		return;
 
-	if (!zones_set_client_zone(c, zone))
-		return;
-
 	if (c->isfloating) {
+		if (!zones_set_client_zone(c, zone))
+			return;
 		c->geom = zones_align_floating(c, zone);
 		c->iscustompos = 1;
 		c->float_geom = c->geom;
-		wlr_scene_node_reparent(
-			&c->scene->node, c->isoverlay ? layers[LyrOverlay] : layers[LyrTile]);
+		client_reparent_by_stack(c, false, true);
 		resize(c, c->geom, 0);
 		focusclient(c, 1);
 		return;
@@ -2404,6 +2415,8 @@ void movetozone(const Arg *arg) {
 		if (!zones_set_client_zone(c, zone))
 			return;
 	} else {
+		if (!zones_set_client_zone(c, zone))
+			return;
 		zones_assign_missing_visible(c->mon);
 	}
 	arrange(c->mon, false, false);

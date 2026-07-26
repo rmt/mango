@@ -120,7 +120,7 @@ dwindle_drop_simple_split=1
 
 ## Zones Layout
 
-The Zones layout places each tiled window into a named rectangular region of the usable monitor area. Windows assigned to the same zone intentionally overlap.
+The Zones layout places tiled windows into named rectangular regions of the usable monitor area. Multiple windows may share a zone, and configured zones may overlap.
 
 ### Configuration
 
@@ -130,22 +130,19 @@ zone=name:right,x:50%,y:0%,w:50%,h:100%
 defaultzone=current
 ```
 
-Each `zone=` entry requires:
+Each `zone=` entry requires `name`, `x`, `y`, `w`, and `h`. Coordinates and sizes are percentages of the usable monitor area and may include a trailing `%`. If no valid zones are configured, mangowm installs default `left` and `right` zones.
 
-- `name`
-- `x`
-- `y`
-- `w`
-- `h`
+`defaultzone` controls where new or unassigned windows are placed:
 
-Percentages are based on the usable monitor area and support a trailing `%`.
+- `defaultzone=current` inherits the selected window's zone when possible, then falls back to the first zone.
+- `defaultzone=<name>` selects that configured zone.
+- An invalid or missing default falls back to the first configured zone.
 
-### Default Behavior
+### Layout Transitions
 
-- If no valid zones are configured, mangowm installs `left` and `right`.
-- `defaultzone=current` makes new windows inherit the focused window's zone.
-- `defaultzone=<name>` forces new windows into that configured zone.
-- Entering `zones` auto-assigns visible tiled windows by best geometry overlap before the layout resizes them.
+When entering `zones`, visible windows are assigned from their current geometry before the layout resizes them. Selection prefers the greatest intersection, then the smallest matching zone, then the zone with the lowest tiled occupancy. Clients that were fullscreen or maximized during the first pass are assigned after those states are cleared.
+
+When leaving `zones`, visible clients' zone assignments are cleared. Returning to the layout therefore recomputes placement from current geometry rather than restoring stale assignments.
 
 ### Commands
 
@@ -156,9 +153,31 @@ bind=SUPER,bracketright,focuszone,right
 bind=SUPER+SHIFT,bracketright,movetozone,right
 ```
 
-`focuszone` accepts a single zone or a `|`-separated list such as `left|right`.
+`focuszone` focuses or cycles through visible clients assigned to a zone. It accepts a `|`-separated list such as `left|right`.
 
-`movetozone` assigns the selected window to the target zone. Floating windows keep their current size and are aligned within the zone.
+`movetozone` assigns the selected window to a named zone:
+
+- Tiled clients are resized by the zones layout. If necessary, the current tag enters `zones` through the normal layout-transition path.
+- Floating clients retain their size and are aligned within the target zone.
+
+### Docked Floating Windows
+
+A floating client with a valid zone assignment is treated as a docked floating window. It remains floating and keeps its dimensions, but is aligned to its zone and stacked with tiled content. Use `toggleoverlay` when it should remain explicitly above other windows.
+
+When focus moves within the same zone, the previous docked floating window may be lowered to reveal the newly focused client. Focus changes to another zone leave it in place, allowing each zone to retain its visible top window.
+
+Turning a client floating while `zones` is active aligns it to its current or default zone.
+
+### Drag and Drop
+
+Dragging a tiled client in `zones` shows the best-overlap zone as a drop preview. The client is temporarily floated while moving, but dropping restores its tiled state and prior floating geometry.
+
+Docked floating clients can also be redocked:
+
+- Dropping within the same zone preserves the new manual position.
+- Dropping onto another zone updates the assignment and aligns the window there.
+- Dropping outside all zones snaps back to the current or default zone.
+- The client remains floating in all cases.
 
 ---
 
