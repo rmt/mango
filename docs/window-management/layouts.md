@@ -21,6 +21,7 @@ mangowm supports a variety of layouts that can be assigned per tag.
 - `dwindle`
 - `fair`
 - `vertical_fair`
+- `zones`
 
 ---
 
@@ -114,6 +115,50 @@ dwindle_preserve_split=0
 dwindle_smart_resize=0
 dwindle_drop_simple_split=1
 ```
+
+---
+
+## Zones Layout
+
+The Zones layout places each tiled window into a named rectangular region of the usable monitor area. Windows assigned to the same zone intentionally overlap.
+
+### Configuration
+
+```ini
+zone=name:left,x:0%,y:0%,w:50%,h:100%
+zone=name:right,x:50%,y:0%,w:50%,h:100%
+defaultzone=current
+```
+
+Each `zone=` entry requires:
+
+- `name`
+- `x`
+- `y`
+- `w`
+- `h`
+
+Percentages are based on the usable monitor area and support a trailing `%`.
+
+### Default Behavior
+
+- If no valid zones are configured, mangowm installs `left` and `right`.
+- `defaultzone=current` makes new windows inherit the focused window's zone.
+- `defaultzone=<name>` forces new windows into that configured zone.
+- Entering `zones` auto-assigns visible tiled windows by best geometry overlap before the layout resizes them.
+
+### Commands
+
+```ini
+bind=SUPER,bracketleft,focuszone,left
+bind=SUPER+SHIFT,bracketleft,movetozone,left
+bind=SUPER,bracketright,focuszone,right
+bind=SUPER+SHIFT,bracketright,movetozone,right
+```
+
+`focuszone` accepts a single zone or a `|`-separated list such as `left|right`.
+
+`movetozone` assigns the selected window to the target zone. Floating windows keep their current size and are aligned within the zone.
 
 ---
 

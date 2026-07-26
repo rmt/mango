@@ -313,6 +313,97 @@ void focuslast(const Arg *arg) {
 	return;
 }
 
+static bool focuszone_token_matches(const char *zones, const char *name) {
+	const char *cursor = zones;
+	const char *token = zones;
+
+	if (!zones || !name)
+		return false;
+
+	for (;; cursor++) {
+		if (*cursor != '|' && *cursor != '\0')
+			continue;
+
+		if (cursor > token) {
+			size_t len = (size_t)(cursor - token);
+			if (strlen(name) == len) {
+				size_t i;
+				bool matches = true;
+
+				for (i = 0; i < len; i++) {
+					if (toupper((unsigned char)token[i]) !=
+						toupper((unsigned char)name[i])) {
+						matches = false;
+						break;
+					}
+				}
+
+				if (matches)
+					return true;
+			}
+		}
+
+		if (*cursor == '\0')
+			break;
+		token = cursor + 1;
+	}
+
+	return false;
+}
+
+static bool focuszone_candidate(Client *c, const char *zones) {
+	return c && selmon && c->mon == selmon && !c->iskilling &&
+		   !c->isminimized && !c->isunglobal && client_surface_mapped(c) &&
+		   !client_is_unmanaged(c) && VISIBLEON(c, selmon) &&
+		   zones_client_has_valid_zone(c) &&
+		   focuszone_token_matches(zones, c->zone_name);
+}
+
+static Client *next_focuszone_candidate(const char *zones, Client *after) {
+	Client *c = NULL;
+	bool seen_after = after == NULL;
+
+	wl_list_for_each(c, &fstack, flink) {
+		if (!focuszone_candidate(c, zones))
+			continue;
+		if (seen_after)
+			return c;
+		if (c == after)
+			seen_after = true;
+	}
+
+	wl_list_for_each(c, &fstack, flink) {
+		if (focuszone_candidate(c, zones))
+			return c;
+	}
+
+	return NULL;
+}
+
+void focuszone(const Arg *arg) {
+	Client *current = NULL;
+	Client *target = NULL;
+
+	if (!selmon || !arg || !arg->v)
+		return;
+	if (arg->v[0] == '\0')
+		return;
+
+	current = selmon->sel;
+	if (focuszone_candidate(current, arg->v))
+		target = next_focuszone_candidate(arg->v, current);
+	else
+		target = next_focuszone_candidate(arg->v, NULL);
+
+	if (!target)
+		return;
+
+	focusclient(target, 1);
+	if (config.warpcursor)
+		warp_cursor(target);
+	return;
+}
+
 void toggle_trackpad_enable(const Arg *arg) {
 	config.disable_trackpad = !config.disable_trackpad;
 	return;
@@ -519,7 +610,11 @@ void moveresize(const Arg *arg) {
 		return;
 	}
 	if (grabc->isfloating == 0 && arg->ui == CurMove) {
-		grabc->drag_to_tile = true;
+		const Layout *layout =
+			grabc->mon->pertag->ltidxs[grabc->mon->pertag->curtag];
+
+		grabc->drag_to_zone = layout && layout->id == ZONES;
+		grabc->drag_to_tile = !grabc->drag_to_zone;
 		exit_scroller_stack(grabc);
 		setfloating(grabc, 1);
 		grabc->drag_tile_float_backup_geom = grabc->float_geom;
@@ -728,6 +823,22 @@ void restore_minimized(const Arg *arg) {
 	return;
 }
 
+static void set_monitor_layout(Monitor *m, const Layout *layout) {
+	const Layout *old_layout;
+
+	if (!m || !layout)
+		return;
+
+	old_layout = m->pertag->ltidxs[m->pertag->curtag];
+	if (old_layout && old_layout->id == ZONES && layout->id != ZONES)
+		zones_clear_visible(m);
+
+	m->pertag->ltidxs[m->pertag->curtag] = layout;
+
+	if ((!old_layout || old_layout->id != ZONES) && layout->id == ZONES)
+		zones_assign_visible_by_geometry(m, true);
+}
+
 void setlayout(const Arg *arg) {
 	int32_t jk;
 	if (!selmon)
@@ -735,7 +846,7 @@ void setlayout(const Arg *arg) {
 
 	for (jk = 0; jk < LENGTH(layouts); jk++) {
 		if (strcmp(layouts[jk].name, arg->v) == 0) {
-			selmon->pertag->ltidxs[selmon->pertag->curtag] = &layouts[jk];
+			set_monitor_layout(selmon, &layouts[jk]);
 			clear_fullscreen_and_maximized_state(selmon);
 			arrange(selmon, false, false);
 			printstatus(IPC_WATCH_ARRANGGE);
@@ -1242,8 +1353,7 @@ void switch_layout(const Arg *arg) {
 			len =
 				MANGO_MAX(strlen(layouts[ji].name), strlen(target_layout_name));
 			if (strncmp(layouts[ji].name, target_layout_name, len) == 0) {
-				selmon->pertag->ltidxs[selmon->pertag->curtag] = &layouts[ji];
-
+				set_monitor_layout(selmon, &layouts[ji]);
 				break;
 			}
 		}
@@ -1256,8 +1366,9 @@ void switch_layout(const Arg *arg) {
 	for (jk = 0; jk < LENGTH(layouts); jk++) {
 		if (strcmp(layouts[jk].name,
 				   selmon->pertag->ltidxs[selmon->pertag->curtag]->name) == 0) {
-			selmon->pertag->ltidxs[selmon->pertag->curtag] =
-				jk == LENGTH(layouts) - 1 ? &layouts[0] : &layouts[jk + 1];
+			set_monitor_layout(selmon,
+							   jk == LENGTH(layouts) - 1 ? &layouts[0]
+													  : &layouts[jk + 1]);
 			clear_fullscreen_and_maximized_state(selmon);
 			arrange(selmon, false, false);
 			printstatus(IPC_WATCH_ARRANGGE);
@@ -1584,6 +1695,8 @@ void toggleoverlay(const Arg *arg) {
 	c->isoverlay ^= 1;
 
 	client_reparent_group(c);
+	if (c->isoverlay)
+		client_raise_group(c);
 	setborder_color(c);
 	return;
 }
@@ -2240,6 +2353,61 @@ void focusid(const Arg *arg) {
 		client_focus_group_member(c);
 
 	client_active(c);
+	return;
+}
+
+void movetozone(const Arg *arg) {
+	Client *c = NULL;
+	const ConfigZone *zone = NULL;
+	int32_t i = 0;
+	const Layout *zones_layout = NULL;
+
+	if (!selmon || selmon->isoverview || !arg || !arg->v)
+		return;
+
+	c = arg->tc ? arg->tc : selmon->sel;
+	if (!c || !c->mon || c->iskilling || !client_surface_mapped(c))
+		return;
+	if (client_is_unmanaged(c) || c->isfullscreen || c->ismaximizescreen)
+		return;
+
+	zone = zones_find(arg->v);
+	if (!zone)
+		return;
+
+	if (!zones_set_client_zone(c, zone))
+		return;
+
+	if (c->isfloating) {
+		c->geom = zones_align_floating(c, zone);
+		c->iscustompos = 1;
+		c->float_geom = c->geom;
+		wlr_scene_node_reparent(
+			&c->scene->node, c->isoverlay ? layers[LyrOverlay] : layers[LyrTile]);
+		resize(c, c->geom, 0);
+		focusclient(c, 1);
+		return;
+	}
+
+	for (i = 0; i < LENGTH(layouts); i++) {
+		if (layouts[i].id == ZONES) {
+			zones_layout = &layouts[i];
+			break;
+		}
+	}
+
+	if (!zones_layout)
+		return;
+
+	if (c->mon->pertag->ltidxs[c->mon->pertag->curtag]->id != ZONES) {
+		set_monitor_layout(c->mon, zones_layout);
+		if (!zones_set_client_zone(c, zone))
+			return;
+	} else {
+		zones_assign_missing_visible(c->mon);
+	}
+	arrange(c->mon, false, false);
+	focusclient(c, 1);
 	return;
 }
 

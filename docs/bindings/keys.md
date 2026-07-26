@@ -111,6 +111,7 @@ bindr=Super,Super_L,spawn,rofi -show run
 | `focus_window_or_workspace` | `left/right/up/down` | Focus window in direction or switch to next/previous workspace. |
 | `focusstack` | `next/prev` | Cycle focus within the stack. |
 | `focuslast` | - | Focus the previously active window. |
+| `focuszone` | `zone\|zone...` | Focus or cycle windows assigned to one or more configured zones, for example `left\|right`. |
 | `exchange_client` | `left/right/up/down` | Swap window with neighbor in direction. |
 | `exchange_stack_client` | `next/prev` | Exchange window position in stack. |
 | `zoom` | - | Swap focused window with Master. |
@@ -157,6 +158,7 @@ It is formed by tag numbers `1`–`9`, optionally combined with `|`.
 | :--- | :--- | :--- |
 | `setlayout` | `name` | Switch to layout (e.g., `scroller`, `tile`). |
 | `switch_layout` | - | Cycle through available layouts. |
+| `movetozone` | `zone` | Assign a window to a configured zone such as `left` or `right`. |
 | `incnmaster` | `+1/-1` | Increase/Decrease number of master windows. |
 | `setmfact` | `+0.05` | Increase/Decrease master area size. |
 | `set_proportion` | `float` | Set scroller window proportion (0.0–1.0). |

@@ -84,3 +84,5 @@ void dwindle_toggle_split_direction(const Arg *arg);
 void dwindle_split_horizontal(const Arg *arg);
 void dwindle_split_vertical(const Arg *arg);
 void focusid(const Arg *arg);
+void movetozone(const Arg *arg);
+void focuszone(const Arg *arg);

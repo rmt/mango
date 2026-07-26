@@ -222,6 +222,27 @@ enum { UNFOLD, FOLD, INVALIDFOLD };
 enum { PREV, NEXT };
 enum { STATE_UNSPECIFIED = 0, STATE_ENABLED, STATE_DISABLED };
 enum { FORCE, UNFORCE };
+enum {
+	POS_ZONE_NONE,
+	POS_ZONE_C,
+	POS_ZONE_BC,
+	POS_ZONE_N,
+	POS_ZONE_S,
+	POS_ZONE_E,
+	POS_ZONE_W,
+	POS_ZONE_NW,
+	POS_ZONE_NE,
+	POS_ZONE_SW,
+	POS_ZONE_SE,
+	POS_ZONE_BN,
+	POS_ZONE_BS,
+	POS_ZONE_BE,
+	POS_ZONE_BW,
+	POS_ZONE_BNW,
+	POS_ZONE_BNE,
+	POS_ZONE_BSW,
+	POS_ZONE_BSE,
+};
 
 enum tearing_mode {
 	TEARING_DISABLED = 0,
@@ -437,6 +458,7 @@ struct Client {
 	Client *swallowdby, *swallowing;
 	bool is_clip_to_hide;
 	bool drag_to_tile;
+	bool drag_to_zone;
 	bool scratchpad_switching_mon;
 	bool fake_no_border;
 	int32_t nofocus;
@@ -470,6 +492,7 @@ struct Client {
 	float grid_row_per;
 	float old_grid_col_per;
 	float old_grid_row_per;
+	char *zone_name;
 	int32_t grid_col_idx;
 	int32_t grid_row_idx;
 	uint32_t id;
@@ -950,6 +973,7 @@ static void global_draw_group_bar(Client *c, int32_t x, int32_t y,
 								  int32_t width, int32_t height);
 
 static void client_reparent_group(Client *c);
+static bool zones_client_is_docked_floating(Client *c);
 static void client_change_mon(Client *c, Monitor *m);
 static void check_vrr_enable(Client *c);
 static void output_state_setup_hdr(Monitor *m, bool silent,
@@ -979,6 +1003,8 @@ static struct wlr_backend *headless_backend;
 static struct wlr_output *fallback_output;
 static struct wlr_scene *scene;
 static struct wlr_scene_tree *layers[NUM_LAYERS];
+static struct wlr_scene_rect *zone_droparea;
+static const void *dropzone;
 static struct wlr_renderer *drw;
 static struct wlr_allocator *alloc;
 static struct wlr_compositor *compositor;
@@ -1185,6 +1211,7 @@ static struct wl_event_source *sync_keymap;
 #include "animation/common.h"
 #include "animation/layer.h"
 #include "animation/tag.h"
+#include "layout/zones.h"
 #include "dispatch/bind_define.h"
 #include "ext-protocol/all.h"
 #include "fetch/fetch.h"
@@ -2350,6 +2377,30 @@ void hold_end(struct wl_listener *listener, void *data) {
 										  event->time_msec, event->cancelled);
 }
 
+static void hide_zone_droparea(void) {
+	dropzone = NULL;
+	if (!zone_droparea)
+		return;
+	wlr_scene_node_set_enabled(&zone_droparea->node, false);
+	wlr_scene_rect_set_size(zone_droparea, 0, 0);
+}
+
+static void show_zone_droparea(Monitor *m, const ConfigZone *zone) {
+	struct wlr_box box;
+
+	if (!zone_droparea || !m || !zone) {
+		hide_zone_droparea();
+		return;
+	}
+
+	box = zones_box(m, zone);
+	dropzone = zone;
+	wlr_scene_node_set_position(&zone_droparea->node, box.x, box.y);
+	wlr_scene_rect_set_size(zone_droparea, box.width, box.height);
+	wlr_scene_node_raise_to_top(&zone_droparea->node);
+	wlr_scene_node_set_enabled(&zone_droparea->node, true);
+}
+
 Client *find_closest_tiled_client(Client *c) {
 	Client *tc, *closest = NULL;
 	long min_dist = LONG_MAX;
@@ -2381,9 +2432,20 @@ Client *find_closest_tiled_client(Client *c) {
 
 void place_drag_tile_client(Client *c) {
 	Client *closest = find_closest_tiled_client(c);
+	const Layout *layout = c && c->mon
+		? c->mon->pertag->ltidxs[c->mon->pertag->curtag]
+		: NULL;
+
+	if (c && c->drag_to_zone && layout && layout->id == ZONES) {
+		if (dropzone)
+			zones_set_client_zone(c, (const ConfigZone *)dropzone);
+		setfloating(c, 0);
+		hide_zone_droparea();
+		return;
+	}
 
 	if (closest && closest->mon) {
-		const Layout *layout =
+		const Layout *closest_layout =
 			closest->mon->pertag->ltidxs[closest->mon->pertag->curtag];
 
 		if (closest->drop_direction == UNDIR) {
@@ -2393,15 +2455,15 @@ void place_drag_tile_client(Client *c) {
 			return;
 		}
 
-		if (layout->id == SCROLLER) {
+		if (closest_layout->id == SCROLLER) {
 			scroller_drop_tile(c, closest, 0);
 			return;
 		}
-		if (layout->id == VERTICAL_SCROLLER) {
+		if (closest_layout->id == VERTICAL_SCROLLER) {
 			scroller_drop_tile(c, closest, 1);
 			return;
 		}
-		if (layout->id == DWINDLE) {
+		if (closest_layout->id == DWINDLE) {
 			uint32_t tag = c->mon->pertag->curtag;
 			bool insert_before = (closest->drop_direction == LEFT ||
 								  closest->drop_direction == UP);
@@ -2552,13 +2614,16 @@ bool handle_buttonpress(struct wlr_pointer_button_event *event) {
 			grabc = NULL;
 			start_drag_window = false;
 			last_apply_drap_time = 0;
-			if (tmpc->drag_to_tile && config.drag_tile_to_tile) {
+			if ((tmpc->drag_to_tile && config.drag_tile_to_tile) ||
+				tmpc->drag_to_zone) {
 				place_drag_tile_client(tmpc);
 				tmpc->float_geom = tmpc->drag_tile_float_backup_geom;
 			} else {
 				apply_window_snap(tmpc);
 			}
 			tmpc->drag_to_tile = false;
+			tmpc->drag_to_zone = false;
+			hide_zone_droparea();
 			if (dropc) {
 				dropc->enable_drop_area_draw = false;
 				client_set_drop_area(dropc);
@@ -4170,6 +4235,8 @@ destroynotify(struct wl_listener *listener, void *data) {
 	if (xdg_surface && xdg_surface->data == c)
 		xdg_surface->data = NULL;
 
+	free(c->zone_name);
+	c->zone_name = NULL;
 	free(c);
 }
 
@@ -4227,6 +4294,10 @@ void focusclient(Client *c, int32_t lift) {
 
 	if (c && c->nofocus)
 		return;
+
+	if (selmon && selmon->sel && selmon->sel != c &&
+		zones_client_is_docked_floating(selmon->sel) && !selmon->sel->isoverlay)
+		wlr_scene_node_lower_to_bottom(&selmon->sel->scene->node);
 
 	/* Raise client in stacking order if requested */
 	if (c && lift) {
@@ -4837,6 +4908,7 @@ void init_client_properties(Client *c) {
 	c->scroller_proportion = config.scroller_default_proportion;
 	c->is_pending_open_animation = true;
 	c->drag_to_tile = false;
+	c->drag_to_zone = false;
 	c->scratchpad_switching_mon = false;
 	c->fake_no_border = false;
 	c->focused_opacity = config.focused_opacity;
@@ -5279,6 +5351,14 @@ void motionnotify(uint32_t time, struct wlr_input_device *device, double dx,
 				client_set_drop_area(dropc);
 				dropc = NULL;
 			}
+		} else if (grabc->drag_to_zone) {
+			Monitor *m = xytomon(cursor->x, cursor->y);
+			const ConfigZone *zone = zones_pick_for_box(m, grabc->float_geom);
+
+			if (zone)
+				show_zone_droparea(m, zone);
+			else
+				hide_zone_droparea();
 		}
 		resize(grabc, grabc->float_geom, 1);
 		return;
@@ -5950,6 +6030,18 @@ setfloating(Client *c, int32_t floating) {
 			resize(c, target_box, 0);
 		}
 
+		if (c->mon->pertag->ltidxs[c->mon->pertag->curtag]->id == ZONES) {
+			const ConfigZone *zone = zones_client_has_valid_zone(c)
+									 ? zones_find(c->zone_name)
+									 : zones_default_for_monitor(c->mon);
+			if (zone && zones_set_client_zone(c, zone)) {
+				c->geom = zones_align_floating(c, zone);
+				c->float_geom = c->geom;
+				c->iscustompos = 1;
+				resize(c, c->geom, 0);
+			}
+		}
+
 		c->need_float_size_reduce = 0;
 	} else if (c->isfloating && c == grabc) {
 		c->need_float_size_reduce = 0;
@@ -6266,6 +6358,12 @@ void setmon(Client *c, Monitor *m, uint32_t newtags, bool focus) {
 		reset_foreign_tolevel(c, oldmon, m);
 		resize(c, c->geom, 0);
 		client_reset_mon_tags(c, m, newtags);
+		if (!zones_client_has_valid_zone(c) && c->tags &&
+			m->pertag->ltidxs[get_tags_first_tag_num(c->tags)]->id == ZONES) {
+			const ConfigZone *zone = zones_default_for_monitor(m);
+			if (zone)
+				zones_set_client_zone(c, zone);
+		}
 		check_match_tag_floating_rule(c, m);
 		setfloating(c, c->isfloating);
 		setfullscreen(c, c->isfullscreen,
@@ -6624,6 +6722,11 @@ void setup(void) {
 		wlr_scene_rect_create(layers[LyrBlock], sgeom.width, sgeom.height,
 							  (float[4]){0.1, 0.1, 0.1, 1.0});
 	wlr_scene_node_set_enabled(&locked_bg->node, false);
+
+	zone_droparea = wlr_scene_rect_create(layers[LyrOverlay], 0, 0,
+							 config.dropcolor);
+	wlr_scene_node_set_enabled(&zone_droparea->node, false);
+	wlr_scene_node_lower_to_bottom(&zone_droparea->node);
 
 	/* Use decoration protocols to negotiate server-side decorations */
 	wlr_server_decoration_manager_set_default_mode(
