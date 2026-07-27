@@ -4357,32 +4357,22 @@ fullscreennotify(struct wl_listener *listener, void *data) {
 }
 
 void requestmonstate(struct wl_listener *listener, void *data) {
-	/* This ensures nested backends can be resized */
+	/* Nested backends own the requested state; commit it as supplied. */
 	Monitor *m = wl_container_of(listener, m, request_state);
 	const struct wlr_output_event_request_state *event = data;
 
-	if (event->state->committed == WLR_OUTPUT_STATE_MODE) {
-
-		switch (event->state->mode_type) {
-		case WLR_OUTPUT_STATE_MODE_FIXED:
-			wlr_output_state_set_mode(&m->pending, event->state->mode);
-			break;
-		case WLR_OUTPUT_STATE_MODE_CUSTOM:
-			wlr_output_state_set_custom_mode(&m->pending,
-											 event->state->custom_mode.width,
-											 event->state->custom_mode.height,
-											 event->state->custom_mode.refresh);
-			break;
-		}
-		updatemons(NULL, NULL);
-		wlr_output_schedule_frame(m->wlr_output);
+	if (!m || !event || !event->state)
 		return;
-	}
 
 	if (!wlr_output_commit_state(m->wlr_output, event->state)) {
 		wlr_log(WLR_ERROR,
 				"Backend requested a new state that could not be applied");
+		return;
 	}
+
+	updatemons(NULL, NULL);
+	if (m->wlr_output->enabled)
+		wlr_output_schedule_frame(m->wlr_output);
 }
 
 void inputdevice(struct wl_listener *listener, void *data) {
