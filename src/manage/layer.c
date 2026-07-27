@@ -404,8 +404,8 @@ void handle_popup_destroy(struct wl_listener *listener, void *data) {
 	if (surface && surface->data == popup->scene)
 		surface->data = NULL;
 
-	wl_list_remove(&popup->destroy.link);
-	wl_list_remove(&popup->reposition.link);
+	listener_unlink(&popup->destroy);
+	listener_unlink(&popup->reposition);
 	free(popup);
 }
 
@@ -443,7 +443,7 @@ void handle_popup_commit(struct wl_listener *listener, void *data) {
 
 cleanup_popup_commit:
 
-	wl_list_remove(&popup->commit.link);
+	listener_unlink(&popup->commit);
 	popup->commit.notify = NULL;
 
 	if (should_destroy) {
@@ -520,10 +520,10 @@ void handle_layer_node_destroy(struct wl_listener *listener, void *data) {
 	struct wlr_surface *surface = layer_surface ? layer_surface->surface : NULL;
 
 	wl_list_remove(&l->link);
-	wl_list_remove(&l->destroy.link);
-	wl_list_remove(&l->map.link);
-	wl_list_remove(&l->unmap.link);
-	wl_list_remove(&l->surface_commit.link);
+	listener_unlink(&l->destroy);
+	listener_unlink(&l->map);
+	listener_unlink(&l->unmap);
+	listener_unlink(&l->surface_commit);
 	if (layer_surface && layer_surface->data == l)
 		layer_surface->data = NULL;
 	if (surface && surface->data == l->popups)

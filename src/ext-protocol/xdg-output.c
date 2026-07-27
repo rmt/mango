@@ -1,5 +1,6 @@
 #include "mango/ext-protocol/xdg-output.h"
 #include "mango/common/server.h"
+#include "mango/common/util.h"
 #include "mango/config/parse_config.h"
 #include "mango/manage/client.h"
 #include "mango/manage/monitor.h"
@@ -258,7 +259,7 @@ void xdg_output_destroy(struct MangoXDGOutput *output) {
 		wl_list_remove(&res->link);
 		free(res);
 	}
-	wl_list_remove(&output->description.link);
+	listener_unlink(&output->description);
 	wl_list_remove(&output->link);
 	free(output);
 }

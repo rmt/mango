@@ -1,5 +1,6 @@
 #include "mango/input/device.h"
 #include "mango/common/server.h"
+#include "mango/common/util.h"
 #include "mango/input/keyboard.h"
 #include "mango/input/pointer.h"
 #include "mango/input/switch.h"
@@ -23,7 +24,7 @@ void handle_input_device_destroy(struct wl_listener *listener, void *data) {
 		switch (input_dev->wlr_device->type) {
 		case WLR_INPUT_DEVICE_SWITCH: {
 			Switch *sw = (Switch *)input_dev->device_data;
-			wl_list_remove(&sw->toggle.link);
+			listener_unlink(&sw->toggle);
 			free(sw);
 			break;
 		}
@@ -34,9 +35,9 @@ void handle_input_device_destroy(struct wl_listener *listener, void *data) {
 	}
 
 	if (input_dev->wlr_device->type == WLR_INPUT_DEVICE_KEYBOARD)
-		wl_list_remove(&input_dev->key_watch.link);
+		listener_unlink(&input_dev->key_watch);
 	wl_list_remove(&input_dev->link);
-	wl_list_remove(&input_dev->destroy_listener.link);
+	listener_unlink(&input_dev->destroy_listener);
 	free(input_dev);
 }
 

@@ -275,7 +275,7 @@ void handle_keyboard_shortcuts_inhibitor_destroy(struct wl_listener *listener,
 	mango_error(true, WLR_DEBUG, "Removing keyboard shortcuts inhibitor");
 
 	wl_list_remove(&inhibitor->link);
-	wl_list_remove(&inhibitor->destroy.link);
+	listener_unlink(&inhibitor->destroy);
 	free(inhibitor);
 }
 
@@ -447,9 +447,9 @@ void handle_standalone_keyboard_destroy(struct wl_listener *listener,
 		server.last_active_keyboard = NULL;
 	invalidate_saved_seat_keyboard(group->keyboard);
 	restore_seat_keyboard(group);
-	wl_list_remove(&group->key.link);
-	wl_list_remove(&group->modifiers.link);
-	wl_list_remove(&group->destroy.link);
+	listener_unlink(&group->key);
+	listener_unlink(&group->modifiers);
+	listener_unlink(&group->destroy);
 	if (group->key_repeat_source) {
 		wl_event_source_remove(group->key_repeat_source);
 		group->key_repeat_source = NULL;
@@ -538,9 +538,9 @@ void keyboard_group_destroy(struct wl_listener *listener, void *data) {
 	wl_list_remove(&group->link);
 	invalidate_saved_seat_keyboard(group->keyboard);
 	wl_event_source_remove(group->key_repeat_source);
-	wl_list_remove(&group->key.link);
-	wl_list_remove(&group->modifiers.link);
-	wl_list_remove(&group->destroy.link);
+	listener_unlink(&group->key);
+	listener_unlink(&group->modifiers);
+	listener_unlink(&group->destroy);
 	if (group->wlr_group && group->wlr_group->data == group)
 		group->wlr_group->data = NULL;
 	wlr_keyboard_group_destroy(group->wlr_group);

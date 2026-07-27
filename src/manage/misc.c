@@ -361,8 +361,8 @@ void check_idle_inhibitor(struct wlr_surface *exclude) {
 void handle_xdg_decoration_destroy(struct wl_listener *listener, void *data) {
 	Client *c = wl_container_of(listener, c, destroy_decoration);
 
-	wl_list_remove(&c->destroy_decoration.link);
-	wl_list_remove(&c->set_decoration_mode.link);
+	listener_unlink(&c->destroy_decoration);
+	listener_unlink(&c->set_decoration_mode);
 	c->decoration = NULL;
 }
 
@@ -412,7 +412,7 @@ void handle_idle_inhibitor_destroy(struct wl_listener *listener, void *data) {
 	 * at this point the idle inhibitor is still in the list of the manager
 	 */
 	check_idle_inhibitor(wlr_surface_get_root_surface(data));
-	wl_list_remove(&listener->link);
+	listener_unlink(listener);
 	free(listener);
 }
 
@@ -429,9 +429,9 @@ void session_lock_cleanup(SessionLock *lock, int32_t unlock) {
 	pointer_process_motion(0, NULL, 0, 0, 0, 0);
 
 destroy:
-	wl_list_remove(&lock->new_surface.link);
-	wl_list_remove(&lock->unlock.link);
-	wl_list_remove(&lock->destroy.link);
+	listener_unlink(&lock->new_surface);
+	listener_unlink(&lock->unlock);
+	listener_unlink(&lock->destroy);
 
 	if (lock->lock && lock->lock->data == lock)
 		lock->lock->data = NULL;
@@ -449,7 +449,7 @@ void handle_session_lock_surface_destroy(struct wl_listener *listener,
 	struct wlr_surface *wlr_surface = lock_surface ? lock_surface->surface : NULL;
 
 	m->lock_surface = NULL;
-	wl_list_remove(&m->destroy_lock_surface.link);
+	listener_unlink(&m->destroy_lock_surface);
 
 	if (wlr_surface)
 		wlr_surface->data = NULL;
@@ -533,7 +533,7 @@ void handle_session_destroy(struct wl_listener *listener, void *data) {
 	struct capture_session_tracker *tracker =
 		wl_container_of(listener, tracker, session_destroy);
 	server.active_capture_count--;
-	wl_list_remove(&tracker->session_destroy.link);
+	listener_unlink(&tracker->session_destroy);
 
 	Client *c = NULL;
 	wl_list_for_each(c, &server.clients, link) {

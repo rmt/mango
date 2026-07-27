@@ -59,8 +59,8 @@ void handle_overview_card_surface_destroy(struct wl_listener *listener,
 										  void *data) {
 	struct ov_card_surface *entry = wl_container_of(listener, entry, destroy);
 	wl_list_remove(&entry->link);
-	wl_list_remove(&entry->commit.link);
-	wl_list_remove(&entry->destroy.link);
+	listener_unlink(&entry->commit);
+	listener_unlink(&entry->destroy);
 	free(entry);
 }
 
@@ -273,8 +273,8 @@ void overview_destroy_card(Client *c) {
 
 	struct ov_card_surface *entry, *tmp;
 	wl_list_for_each_safe(entry, tmp, &c->ov_card_surfaces, link) {
-		wl_list_remove(&entry->commit.link);
-		wl_list_remove(&entry->destroy.link);
+		listener_unlink(&entry->commit);
+		listener_unlink(&entry->destroy);
 		wl_list_remove(&entry->link);
 		free(entry);
 	}

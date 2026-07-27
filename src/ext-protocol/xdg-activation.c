@@ -15,7 +15,7 @@ void handle_xdg_activation_token_destroy(struct wl_listener *listener,
 										 void *data) {
 	struct mango_xdg_activation_token *token =
 		wl_container_of(listener, token, destroy);
-	wl_list_remove(&token->destroy.link);
+	listener_unlink(&token->destroy);
 	free(token);
 }
 
@@ -76,9 +76,9 @@ void handle_xdg_activation_request_activate(struct wl_listener *listener,
 	}
 }
 void handle_xdg_activation_destroy(struct wl_listener *listener, void *data) {
-	wl_list_remove(&activation_request_activate_listener.link);
-	wl_list_remove(&activation_new_token_listener.link);
-	wl_list_remove(&activation_destroy_listener.link);
+	listener_unlink(&activation_request_activate_listener);
+	listener_unlink(&activation_new_token_listener);
+	listener_unlink(&activation_destroy_listener);
 	activation = NULL;
 }
 

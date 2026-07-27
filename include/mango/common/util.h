@@ -22,6 +22,14 @@
 		wl_signal_add((E), _l);                                                \
 	} while (0)
 
+static inline void listener_unlink(struct wl_listener *listener) {
+	if (!listener || !listener->link.next || !listener->link.prev)
+		return;
+
+	wl_list_remove(&listener->link);
+	wl_list_init(&listener->link);
+}
+
 void die(const char *fmt, ...);
 void *ecalloc(size_t nmemb, size_t size);
 int32_t fd_set_nonblock(int32_t fd);

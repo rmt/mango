@@ -255,7 +255,7 @@ void handle_keyboard_grab_destroy(struct wl_listener *listener, void *data) {
 		wl_container_of(listener, relay, keyboard_grab_destroy);
 	struct wlr_input_method_keyboard_grab_v2 *keyboard_grab =
 		relay->input_method->keyboard_grab;
-	wl_list_remove(&relay->keyboard_grab_destroy.link);
+	listener_unlink(&relay->keyboard_grab_destroy);
 
 	if (keyboard_grab->keyboard) {
 		wlr_seat_keyboard_notify_modifiers(keyboard_grab->input_method->seat,
@@ -284,10 +284,10 @@ void handle_input_method_grab_keyboard(struct wl_listener *listener,
 void handle_input_method_destroy(struct wl_listener *listener, void *data) {
 	struct mango_input_method_relay *relay =
 		wl_container_of(listener, relay, input_method_destroy);
-	wl_list_remove(&relay->input_method_commit.link);
-	wl_list_remove(&relay->input_method_grab_keyboard.link);
-	wl_list_remove(&relay->input_method_new_popup_surface.link);
-	wl_list_remove(&relay->input_method_destroy.link);
+	listener_unlink(&relay->input_method_commit);
+	listener_unlink(&relay->input_method_grab_keyboard);
+	listener_unlink(&relay->input_method_new_popup_surface);
+	listener_unlink(&relay->input_method_destroy);
 	relay->input_method = NULL;
 
 	update_text_inputs_focused_surface(relay);
@@ -298,8 +298,8 @@ void handle_popup_surface_destroy(struct wl_listener *listener, void *data) {
 	struct mango_input_method_popup *popup =
 		wl_container_of(listener, popup, destroy);
 	wlr_scene_node_destroy(&popup->tree->node);
-	wl_list_remove(&popup->destroy.link);
-	wl_list_remove(&popup->commit.link);
+	listener_unlink(&popup->destroy);
+	listener_unlink(&popup->commit);
 	wl_list_remove(&popup->link);
 	free(popup);
 }
@@ -426,10 +426,10 @@ void handle_text_input_commit(struct wl_listener *listener, void *data) {
 void handle_text_input_destroy(struct wl_listener *listener, void *data) {
 	struct text_input *text_input =
 		wl_container_of(listener, text_input, destroy);
-	wl_list_remove(&text_input->enable.link);
-	wl_list_remove(&text_input->disable.link);
-	wl_list_remove(&text_input->commit.link);
-	wl_list_remove(&text_input->destroy.link);
+	listener_unlink(&text_input->enable);
+	listener_unlink(&text_input->disable);
+	listener_unlink(&text_input->commit);
+	listener_unlink(&text_input->destroy);
 	wl_list_remove(&text_input->link);
 	update_active_text_input(text_input->relay);
 	free(text_input);
@@ -491,8 +491,8 @@ struct mango_input_method_relay *mango_im_relay_create() {
 	return relay;
 }
 void mango_im_relay_finish(struct mango_input_method_relay *relay) {
-	wl_list_remove(&relay->new_text_input.link);
-	wl_list_remove(&relay->new_input_method.link);
+	listener_unlink(&relay->new_text_input);
+	listener_unlink(&relay->new_input_method);
 	free(relay);
 }
 
@@ -503,7 +503,7 @@ void mango_im_relay_set_focus(struct mango_input_method_relay *relay,
 	}
 
 	if (relay->focused_surface) {
-		wl_list_remove(&relay->focused_surface_destroy.link);
+		listener_unlink(&relay->focused_surface_destroy);
 	}
 	relay->focused_surface = surface;
 	if (surface) {

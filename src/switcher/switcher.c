@@ -62,10 +62,10 @@ void switcher_tile_layout(struct switcher_tile *tile) {
 }
 
 void switcher_surface_finish(struct switcher_surface *entry) {
-	wl_list_remove(&entry->commit.link);
-	wl_list_remove(&entry->destroy.link);
-	wl_list_remove(&entry->output_sample.link);
-	wl_list_remove(&entry->frame_done.link);
+	listener_unlink(&entry->commit);
+	listener_unlink(&entry->destroy);
+	listener_unlink(&entry->output_sample);
+	listener_unlink(&entry->frame_done);
 	wl_list_remove(&entry->link);
 	free(entry);
 }

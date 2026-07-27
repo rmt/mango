@@ -2398,24 +2398,14 @@ void handle_client_unmap(struct wl_listener *listener, void *data) {
 	}
 
 #ifdef XWAYLAND
-	if (client_is_x11(c)) {
-		if (c->commmitx11.link.prev && c->commmitx11.link.next &&
-			c->commmitx11.link.prev != &c->commmitx11.link) {
-			wl_list_remove(&c->commmitx11.link);
-			wl_list_init(&c->commmitx11.link);
-		}
-	}
+	if (client_is_x11(c))
+		listener_unlink(&c->commmitx11);
 #endif
 
 	if (client_is_unmanaged(c)) {
 #ifdef XWAYLAND
-		if (client_is_x11(c)) {
-			if (c->set_geometry.link.prev && c->set_geometry.link.next &&
-				c->set_geometry.link.prev != &c->set_geometry.link) {
-				wl_list_remove(&c->set_geometry.link);
-				wl_list_init(&c->set_geometry.link);
-			}
-		}
+		if (client_is_x11(c))
+			listener_unlink(&c->set_geometry);
 #endif
 		if (c == server.exclusive_focus)
 			server.exclusive_focus = NULL;
@@ -2503,24 +2493,24 @@ void handle_client_destroy(struct wl_listener *listener, void *data) {
 	else
 #endif
 		xdg_surface = c->surface.xdg;
-	wl_list_remove(&c->destroy.link);
-	wl_list_remove(&c->set_title.link);
-	wl_list_remove(&c->fullscreen.link);
-	wl_list_remove(&c->maximize.link);
-	wl_list_remove(&c->minimize.link);
+	listener_unlink(&c->destroy);
+	listener_unlink(&c->set_title);
+	listener_unlink(&c->fullscreen);
+	listener_unlink(&c->maximize);
+	listener_unlink(&c->minimize);
 #ifdef XWAYLAND
 	if (c->type != XDGShell) {
-		wl_list_remove(&c->activate.link);
-		wl_list_remove(&c->associate.link);
-		wl_list_remove(&c->configure.link);
-		wl_list_remove(&c->dissociate.link);
-		wl_list_remove(&c->set_hints.link);
+		listener_unlink(&c->activate);
+		listener_unlink(&c->associate);
+		listener_unlink(&c->configure);
+		listener_unlink(&c->dissociate);
+		listener_unlink(&c->set_hints);
 	} else
 #endif
 	{
-		wl_list_remove(&c->commit.link);
-		wl_list_remove(&c->map.link);
-		wl_list_remove(&c->unmap.link);
+		listener_unlink(&c->commit);
+		listener_unlink(&c->map);
+		listener_unlink(&c->unmap);
 	}
 	/*
 	 * Decoration listeners are attached to deco->events; wlroots tears down
@@ -2528,8 +2518,8 @@ void handle_client_destroy(struct wl_listener *listener, void *data) {
 	 * client/toplevel is destroyed.
 	 */
 	if (c->decoration) {
-		wl_list_remove(&c->destroy_decoration.link);
-		wl_list_remove(&c->set_decoration_mode.link);
+		listener_unlink(&c->destroy_decoration);
+		listener_unlink(&c->set_decoration_mode);
 	}
 #ifdef XWAYLAND
 	if (xsurface && xsurface->data == c)
@@ -4425,8 +4415,8 @@ void handle_xwayland_surface_associate(struct wl_listener *listener,
 void handle_xwayland_surface_dissociate(struct wl_listener *listener,
 										void *data) {
 	Client *c = wl_container_of(listener, c, dissociate);
-	wl_list_remove(&c->map.link);
-	wl_list_remove(&c->unmap.link);
+	listener_unlink(&c->map);
+	listener_unlink(&c->unmap);
 	c->xwl_root_buffer = NULL;
 	c->xwl_clip_active = false;
 }

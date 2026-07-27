@@ -826,10 +826,10 @@ void handle_output_destroy(struct wl_listener *listener, void *data) {
 	wlr_ext_workspace_group_handle_v1_destroy(m->ext_group);
 	cleanup_workspaces_by_monitor(m);
 
-	wl_list_remove(&m->destroy.link);
-	wl_list_remove(&m->frame.link);
+	listener_unlink(&m->destroy);
+	listener_unlink(&m->frame);
 	wl_list_remove(&m->link);
-	wl_list_remove(&m->request_state.link);
+	listener_unlink(&m->request_state);
 	if (m->lock_surface)
 		handle_session_lock_surface_destroy(&m->destroy_lock_surface, NULL);
 	m->wlr_output->data = NULL;
@@ -1375,7 +1375,7 @@ static void do_renderer_recreate(void *data) {
 			  wlr_allocator_autocreate(server.backend, server.renderer)))
 		die("couldn't recreate allocator");
 
-	wl_list_remove(&server.gpu_reset_listener.link);
+	listener_unlink(&server.gpu_reset_listener);
 	wl_signal_add(&server.renderer->events.lost, &server.gpu_reset_listener);
 
 	wlr_compositor_set_renderer(server.compositor, server.renderer);
