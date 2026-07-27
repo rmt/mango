@@ -3074,8 +3074,10 @@ void commitnotify(struct wl_listener *listener, void *data) {
 void destroydecoration(struct wl_listener *listener, void *data) {
 	Client *c = wl_container_of(listener, c, destroy_decoration);
 
-	wl_list_remove(&c->destroy_decoration.link);
-	wl_list_remove(&c->set_decoration_mode.link);
+	listener_unlink(&c->destroy_decoration);
+	listener_unlink(&c->set_decoration_mode);
+	if (c->decoration == data)
+		c->decoration = NULL;
 }
 
 static bool popup_unconstrain(Popup *popup) {
@@ -4031,11 +4033,14 @@ destroynotify(struct wl_listener *listener, void *data) {
 #endif
 		xdg_surface = c->surface.xdg;
 
-	wl_list_remove(&c->destroy.link);
-	wl_list_remove(&c->set_title.link);
-	wl_list_remove(&c->fullscreen.link);
-	wl_list_remove(&c->maximize.link);
-	wl_list_remove(&c->minimize.link);
+	listener_unlink(&c->destroy);
+	listener_unlink(&c->set_title);
+	listener_unlink(&c->fullscreen);
+	listener_unlink(&c->maximize);
+	listener_unlink(&c->minimize);
+	listener_unlink(&c->destroy_decoration);
+	listener_unlink(&c->set_decoration_mode);
+	c->decoration = NULL;
 #ifdef XWAYLAND
 	if (c->type != XDGShell) {
 		wl_list_remove(&c->activate.link);
