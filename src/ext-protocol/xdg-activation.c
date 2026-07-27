@@ -70,7 +70,7 @@ void handle_xdg_activation_request_activate(struct wl_listener *listener,
 		if (c == client_focus_top(server.selected_monitor))
 			return;
 		c->isurgent = 1;
-		if (client_surface(c)->mapped)
+		if (client_surface_mapped(c))
 			client_update_border_color(c);
 		printstatus(IPC_WATCH_ARRANGGE);
 	}

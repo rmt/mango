@@ -1060,7 +1060,7 @@ Client *center_tiled_select(Monitor *m) {
 	int64_t distance;
 	wl_list_for_each(c, &server.clients, link) {
 		if (c && VISIBLEON(c, m) && ISSCROLLTILED(c) &&
-			client_surface(c)->mapped && !c->isfloating &&
+			client_surface_mapped(c) && !c->isfloating &&
 			!client_is_unmanaged(c)) {
 			dirx = c->geom.x + c->geom.width / 2 - (m->w.x + m->w.width / 2);
 			diry = c->geom.y + c->geom.height / 2 - (m->w.y + m->w.height / 2);
@@ -1250,7 +1250,7 @@ Client *client_focus_top(Monitor *m) {
 	wl_list_for_each(c, &server.focus_stack, flink) {
 		if (c->iskilling || c->isunglobal)
 			continue;
-		if (VISIBLEON(c, m) && client_surface(c)->mapped)
+		if (VISIBLEON(c, m) && client_surface_mapped(c))
 			return c;
 	}
 	return NULL;
@@ -1838,7 +1838,7 @@ void apply_window_snap(Client *c) {
 	ch = c->geom.height - 2 * cbw;
 
 	Client *tc = NULL;
-	if (!c || !c->mon || !client_surface(c)->mapped || c->iskilling)
+	if (!c || !c->mon || !client_surface_mapped(c) || c->iskilling)
 		return;
 
 	if (!c->isfloating || !config.enable_floating_snap)
@@ -1846,7 +1846,7 @@ void apply_window_snap(Client *c) {
 
 	wl_list_for_each(tc, &server.clients, link) {
 		if (tc && tc->isfloating && !tc->iskilling &&
-			client_surface(tc)->mapped && VISIBLEON(tc, c->mon)) {
+			client_surface_mapped(tc) && VISIBLEON(tc, c->mon)) {
 
 			tcbw = !server.render_border || tc->fake_no_border ? tc->bw : 0;
 			tcx = tc->geom.x + tcbw;
@@ -2821,7 +2821,7 @@ void handle_client_activation_request(struct wl_listener *listener,
 		client_focus(c, 1);
 	} else if (c != client_focus_top(server.selected_monitor)) {
 		c->isurgent = 1;
-		if (client_surface(c)->mapped)
+		if (client_surface_mapped(c))
 			client_update_border_color(c);
 		printstatus(IPC_WATCH_ARRANGGE);
 	}
@@ -2906,7 +2906,7 @@ void client_focus(Client *c, int32_t lift) {
 	if (c && c->iskilling)
 		return;
 
-	if (c && !client_surface(c)->mapped)
+	if (c && !client_surface_mapped(c))
 		return;
 
 	if (c && client_should_ignore_focus(c) && client_is_x11_popup(c))
@@ -3031,7 +3031,7 @@ void client_focus(Client *c, int32_t lift) {
 			(!VISIBLEON(server.selected_monitor->sel,
 						server.selected_monitor) ||
 			 server.selected_monitor->sel->iskilling ||
-			 !client_surface(server.selected_monitor->sel)->mapped)) {
+			 !client_surface_mapped(server.selected_monitor->sel))) {
 			server.selected_monitor->sel->isfocusing = false;
 			client_set_unfocused_opacity_animation(
 				server.selected_monitor->sel);
@@ -3326,7 +3326,7 @@ void client_set_floating(Client *c, int32_t floating) {
 	c->isfloating = floating;
 	bool window_size_outofrange = false;
 
-	if (!c || !c->mon || !client_surface(c)->mapped || c->iskilling)
+	if (!c || !c->mon || !client_surface_mapped(c) || c->iskilling)
 		return;
 
 	target_box = c->geom;
@@ -3409,7 +3409,7 @@ void client_apply_fullscreen(
 	bool rearrange) // Uses the custom fullscreen proxy for its own fullscreen.
 {
 
-	if (!c || !c->mon || !client_surface(c)->mapped || c->iskilling ||
+	if (!c || !c->mon || !client_surface_mapped(c) || c->iskilling ||
 		c == server.grab_client)
 		return;
 
@@ -3475,7 +3475,7 @@ void client_set_maximize_screen(Client *c, int32_t maximizescreen,
 								bool rearrange) {
 	struct wlr_box maximizescreen_box;
 	int32_t gappoh, gappov;
-	if (!c || !c->mon || !client_surface(c)->mapped || c->iskilling ||
+	if (!c || !c->mon || !client_surface_mapped(c) || c->iskilling ||
 		c == server.grab_client)
 		return;
 
@@ -4080,7 +4080,7 @@ void client_move_to_monitor(Client *c, Client *target, int32_t dir) {
 }
 
 void client_update_oldmonname_record(Client *c, Monitor *m) {
-	if (!c || c->iskilling || !client_surface(c)->mapped)
+	if (!c || c->iskilling || !client_surface_mapped(c))
 		return;
 	memset(c->oldmonname, 0, sizeof(c->oldmonname));
 	strncpy(c->oldmonname, m->wlr_output->name, sizeof(c->oldmonname) - 1);
@@ -4631,7 +4631,7 @@ void client_send_frame_done(Client *c, const struct timespec *now) {
 }
 
 bool client_force_render(Client *c) {
-	if (!c || !c->mon || c->iskilling || !client_surface(c)->mapped ||
+	if (!c || !c->mon || c->iskilling || !client_surface_mapped(c) ||
 		c->scene->node.enabled)
 		return false;
 
@@ -4793,7 +4793,7 @@ void handle_xwayland_surface_request_activate(struct wl_listener *listener,
 		need_arrange = true;
 	} else if (c != client_focus_top(server.selected_monitor)) {
 		c->isurgent = 1;
-		if (client_surface(c)->mapped)
+		if (client_surface_mapped(c))
 			client_update_border_color(c);
 	}
 
@@ -4820,7 +4820,7 @@ void handle_xwayland_surface_request_configure(struct wl_listener *listener,
 	xwayland_x11_to_logical(&new_geo, c->xwayland_scale);
 	fix_xwayland_coordinate(&new_geo);
 
-	if (!client_surface(c) || !client_surface(c)->mapped) {
+	if (!client_surface_mapped(c)) {
 		struct wlr_box xgeo = new_geo;
 		xwayland_logical_to_x11(&xgeo, c->xwayland_scale);
 		wlr_xwayland_surface_configure(c->surface.xwayland, xgeo.x, xgeo.y,

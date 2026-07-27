@@ -339,7 +339,7 @@ void switcher_remove_client(Client *c) {
 
 static bool switcher_client_eligible(Client *c) {
 	return c && c->mon && !c->iskilling && !c->isminimized && !c->isunglobal &&
-		   client_surface(c) && client_surface(c)->mapped &&
+		   client_surface_mapped(c) &&
 		   !client_is_unmanaged(c) && !client_is_x11_popup(c);
 }
 

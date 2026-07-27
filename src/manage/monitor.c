@@ -1090,7 +1090,7 @@ void handle_output_layout_change(struct wl_listener *listener, void *data) {
 			// reconfigure windows.
 			if (client_is_x11(c) && c->mon == m) {
 				xwayland_apply_scale(c);
-				if (client_surface(c)->mapped)
+				if (client_surface_mapped(c))
 					resize(c, c->geom, (ResizeOpts){.interact = 0});
 			}
 #endif
@@ -1105,7 +1105,7 @@ void handle_output_layout_change(struct wl_listener *listener, void *data) {
 			}
 
 			// restore window to old monitor
-			if (c->mon && c->mon != m && client_surface(c)->mapped &&
+			if (c->mon && c->mon != m && client_surface_mapped(c) &&
 				strcmp(c->oldmonname, m->wlr_output->name) == 0) {
 				client_change_mon(c, m);
 			}
@@ -1149,7 +1149,7 @@ void handle_output_layout_change(struct wl_listener *listener, void *data) {
 	if (server.selected_monitor &&
 		server.selected_monitor->wlr_output->enabled) {
 		wl_list_for_each(c, &server.clients, link) {
-			if (!c->mon && client_surface(c)->mapped) {
+			if (!c->mon && client_surface_mapped(c)) {
 				c->mon = server.selected_monitor;
 				reset_foreign_tolevel(c, NULL, c->mon);
 			}
