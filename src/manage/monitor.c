@@ -1222,14 +1222,25 @@ void handle_output_manager_test(struct wl_listener *listener, void *data) {
 void handle_output_power_manager_set_mode(struct wl_listener *listener,
 										  void *data) {
 	struct wlr_output_power_v1_set_mode_event *event = data;
+	if (!event || !event->output)
+		return;
 	Monitor *m = event->output->data;
-
-	if (!m)
+	if (!m || !m->wlr_output)
 		return;
 
-	wlr_output_state_set_enabled(&m->pending, event->mode);
-	mango_output_commit(m);
-	m->only_sleep = !event->mode;
+	bool enabled = event->mode == ZWLR_OUTPUT_POWER_V1_MODE_ON;
+	struct wlr_output_state state;
+	wlr_output_state_init(&state);
+	wlr_output_state_set_enabled(&state, enabled);
+	bool ok = wlr_output_commit_state(m->wlr_output, &state);
+	wlr_output_state_finish(&state);
+	if (!ok) {
+		mango_error(false, WLR_ERROR, "Failed to set output power mode for %s",
+					m->wlr_output->name);
+		return;
+	}
+
+	m->only_sleep = !enabled;
 	handle_output_layout_change(NULL, NULL);
 }
 
