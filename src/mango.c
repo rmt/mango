@@ -7599,7 +7599,7 @@ void activatex11(struct wl_listener *listener, void *data) {
 	struct wlr_xwayland_surface *xsurface = c ? c->surface.xwayland : NULL;
 	bool need_arrange = false;
 
-	if (!c || !xsurface || c->iskilling || !c->foreign_toplevel ||
+	if (locked || !c || !xsurface || c->iskilling || !c->foreign_toplevel ||
 		client_is_unmanaged(c))
 		return;
 
