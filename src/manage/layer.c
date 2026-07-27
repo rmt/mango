@@ -397,6 +397,13 @@ bool popup_unconstrain(Popup *popup) {
 
 void handle_popup_destroy(struct wl_listener *listener, void *data) {
 	Popup *popup = wl_container_of(listener, popup, destroy);
+	struct wlr_surface *surface = NULL;
+
+	if (popup->wlr_popup && popup->wlr_popup->base)
+		surface = popup->wlr_popup->base->surface;
+	if (surface && surface->data == popup->scene)
+		surface->data = NULL;
+
 	wl_list_remove(&popup->destroy.link);
 	wl_list_remove(&popup->reposition.link);
 	free(popup);
@@ -410,6 +417,9 @@ void handle_popup_commit(struct wl_listener *listener, void *data) {
 	struct wlr_xdg_popup *wlr_popup =
 		wlr_xdg_popup_try_from_wlr_surface(surface);
 
+	if (!wlr_popup)
+		return;
+
 	if (!wlr_popup->base->initial_commit)
 		return;
 
@@ -420,9 +430,13 @@ void handle_popup_commit(struct wl_listener *listener, void *data) {
 
 	wlr_scene_node_raise_to_top(wlr_popup->parent->data);
 
-	wlr_popup->base->surface->data =
+	popup->scene =
 		wlr_scene_xdg_surface_create(wlr_popup->parent->data, wlr_popup->base);
-
+	if (!popup->scene) {
+		should_destroy = true;
+		goto cleanup_popup_commit;
+	}
+	wlr_popup->base->surface->data = popup->scene;
 	popup->wlr_popup = wlr_popup;
 
 	should_destroy = popup_unconstrain(popup);
@@ -502,12 +516,19 @@ void handle_new_layer_surface(struct wl_listener *listener, void *data) {
 
 void handle_layer_node_destroy(struct wl_listener *listener, void *data) {
 	LayerSurface *l = wl_container_of(listener, l, destroy);
+	struct wlr_layer_surface_v1 *layer_surface = l->layer_surface;
+	struct wlr_surface *surface = layer_surface ? layer_surface->surface : NULL;
 
 	wl_list_remove(&l->link);
 	wl_list_remove(&l->destroy.link);
 	wl_list_remove(&l->map.link);
 	wl_list_remove(&l->unmap.link);
 	wl_list_remove(&l->surface_commit.link);
+	if (layer_surface && layer_surface->data == l)
+		layer_surface->data = NULL;
+	if (surface && surface->data == l->popups)
+		surface->data = NULL;
+
 	wlr_scene_node_destroy(&l->popups->node);
 	free(l);
 }

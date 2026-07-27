@@ -541,6 +541,8 @@ void keyboard_group_destroy(struct wl_listener *listener, void *data) {
 	wl_list_remove(&group->key.link);
 	wl_list_remove(&group->modifiers.link);
 	wl_list_remove(&group->destroy.link);
+	if (group->wlr_group && group->wlr_group->data == group)
+		group->wlr_group->data = NULL;
 	wlr_keyboard_group_destroy(group->wlr_group);
 	server.keyboard_group = NULL;
 	free(group);

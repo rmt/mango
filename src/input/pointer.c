@@ -696,6 +696,11 @@ void pointer_warp_to_constraint_hint(void) {
 }
 
 void handle_drag_icon_destroy(struct wl_listener *listener, void *data) {
+	struct wlr_drag_icon *icon = data;
+
+	if (icon)
+		icon->data = NULL;
+
 	/* Focus enter isn't sent during drag, so refocus the focused node. */
 	client_focus(client_focus_top(server.selected_monitor), 1);
 	pointer_process_motion(0, NULL, 0, 0, 0, 0);

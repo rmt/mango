@@ -433,6 +433,9 @@ destroy:
 	wl_list_remove(&lock->unlock.link);
 	wl_list_remove(&lock->destroy.link);
 
+	if (lock->lock && lock->lock->data == lock)
+		lock->lock->data = NULL;
+
 	wlr_scene_node_destroy(&lock->scene->node);
 	server.current_lock = NULL;
 	free(lock);
@@ -443,11 +446,15 @@ void handle_session_lock_surface_destroy(struct wl_listener *listener,
 	Monitor *m = wl_container_of(listener, m, destroy_lock_surface);
 	struct wlr_session_lock_surface_v1 *surface,
 		*lock_surface = m->lock_surface;
+	struct wlr_surface *wlr_surface = lock_surface ? lock_surface->surface : NULL;
 
 	m->lock_surface = NULL;
 	wl_list_remove(&m->destroy_lock_surface.link);
 
-	if (lock_surface->surface != server.seat->keyboard_state.focused_surface) {
+	if (wlr_surface)
+		wlr_surface->data = NULL;
+
+	if (!wlr_surface || wlr_surface != server.seat->keyboard_state.focused_surface) {
 		if (server.exclusive_focus && !server.session_locked) {
 			reset_exclusive_layers_focus(m);
 		}
