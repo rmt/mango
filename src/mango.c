@@ -3247,15 +3247,17 @@ void createkeyboard(struct wlr_keyboard *keyboard) {
 		(device = wlr_libinput_get_device_handle(&keyboard->base))) {
 
 		InputDevice *input_dev = calloc(1, sizeof(InputDevice));
-		input_dev->wlr_device = &keyboard->base;
-		input_dev->libinput_device = device;
-		input_dev->device_data = keyboard;
+		if (input_dev) {
+			input_dev->wlr_device = &keyboard->base;
+			input_dev->libinput_device = device;
+			input_dev->device_data = keyboard;
 
-		input_dev->destroy_listener.notify = destroyinputdevice;
-		wl_signal_add(&keyboard->base.events.destroy,
-					  &input_dev->destroy_listener);
+			input_dev->destroy_listener.notify = destroyinputdevice;
+			wl_signal_add(&keyboard->base.events.destroy,
+						  &input_dev->destroy_listener);
 
-		wl_list_insert(&inputdevices, &input_dev->link);
+			wl_list_insert(&inputdevices, &input_dev->link);
+		}
 	}
 
 	/* Set the keymap to match the group keymap */
@@ -3812,14 +3814,16 @@ void createpointer(struct wlr_pointer *pointer) {
 		configure_pointer(device);
 
 		InputDevice *input_dev = calloc(1, sizeof(InputDevice));
-		input_dev->wlr_device = &pointer->base;
-		input_dev->libinput_device = device;
+		if (input_dev) {
+			input_dev->wlr_device = &pointer->base;
+			input_dev->libinput_device = device;
 
-		input_dev->destroy_listener.notify = destroyinputdevice;
-		wl_signal_add(&pointer->base.events.destroy,
-					  &input_dev->destroy_listener);
+			input_dev->destroy_listener.notify = destroyinputdevice;
+			wl_signal_add(&pointer->base.events.destroy,
+						  &input_dev->destroy_listener);
 
-		wl_list_insert(&inputdevices, &input_dev->link);
+			wl_list_insert(&inputdevices, &input_dev->link);
+		}
 	}
 	wlr_cursor_attach_input_device(cursor, &pointer->base);
 }
@@ -3852,6 +3856,8 @@ void createswitch(struct wlr_switch *switch_device) {
 		(device = wlr_libinput_get_device_handle(&switch_device->base))) {
 
 		InputDevice *input_dev = calloc(1, sizeof(InputDevice));
+		if (!input_dev)
+			return;
 		input_dev->wlr_device = &switch_device->base;
 		input_dev->libinput_device = device;
 		input_dev->device_data = NULL; // 初始化为 NULL
@@ -3862,6 +3868,11 @@ void createswitch(struct wlr_switch *switch_device) {
 
 		// 创建 Switch 特定数据
 		Switch *sw = calloc(1, sizeof(Switch));
+		if (!sw) {
+			listener_unlink(&input_dev->destroy_listener);
+			free(input_dev);
+			return;
+		}
 		sw->wlr_switch = switch_device;
 		sw->toggle.notify = switch_toggle;
 		sw->input_dev = input_dev;
@@ -4106,7 +4117,8 @@ void destroysessionlock(struct wl_listener *listener, void *data) {
 
 void destroykeyboardgroup(struct wl_listener *listener, void *data) {
 	KeyboardGroup *group = wl_container_of(listener, group, destroy);
-	wl_event_source_remove(group->key_repeat_source);
+	if (group->key_repeat_source)
+		wl_event_source_remove(group->key_repeat_source);
 	listener_unlink(&group->key);
 	listener_unlink(&group->modifiers);
 	listener_unlink(&group->destroy);
@@ -7420,6 +7432,8 @@ void handle_keyboard_shortcuts_inhibit_new_inhibitor(
 
 	KeyboardShortcutsInhibitor *kbsinhibitor =
 		calloc(1, sizeof(KeyboardShortcutsInhibitor));
+	if (!kbsinhibitor)
+		return;
 
 	kbsinhibitor->inhibitor = inhibitor;
 
