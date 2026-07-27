@@ -26,8 +26,8 @@ void handle_controller_set_hint(struct wl_listener *listener, void *data) {
 void handle_controller_destroy(struct wl_listener *listener, void *data) {
 	struct tearing_controller *controller =
 		wl_container_of(listener, controller, destroy);
-	wl_list_remove(&controller->set_hint.link);
-	wl_list_remove(&controller->destroy.link);
+	listener_unlink(&controller->set_hint);
+	listener_unlink(&controller->destroy);
 	free(controller);
 }
 void handle_tearing_new_object(struct wl_listener *listener, void *data) {

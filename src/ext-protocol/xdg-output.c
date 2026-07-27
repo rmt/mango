@@ -1,5 +1,6 @@
 #include "mango/ext-protocol/xdg-output.h"
 #include "mango/common/server.h"
+#include "mango/common/util.h"
 #include "mango/config/parse.h"
 #include "mango/manage/client.h"
 #include "mango/manage/monitor.h"
@@ -247,7 +248,7 @@ handle_xdg_output_layout_output_destroy(struct wl_listener *listener,
 	struct MangoXDGOutput *output =
 		wl_container_of(listener, output, layout_output_destroy);
 	/* The signal owner does not unlink the listener for us. */
-	wl_list_remove(&output->layout_output_destroy.link);
+	listener_unlink(&output->layout_output_destroy);
 	output->layout_output = NULL;
 	xdg_output_destroy(output);
 }
@@ -286,9 +287,8 @@ void xdg_output_destroy(struct MangoXDGOutput *output) {
 		wl_list_remove(&res->link);
 		free(res);
 	}
-	if (output->layout_output)
-		wl_list_remove(&output->layout_output_destroy.link);
-	wl_list_remove(&output->description.link);
+	listener_unlink(&output->layout_output_destroy);
+	listener_unlink(&output->description);
 	wl_list_remove(&output->link);
 	free(output);
 }

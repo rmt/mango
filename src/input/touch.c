@@ -75,8 +75,8 @@ void handle_touch_point_surface_destroy(struct wl_listener *listener,
 	struct touch_point *point =
 		wl_container_of(listener, point, surface_destroy);
 	point->surface = NULL;
-	wl_list_remove(&listener->link);
-	wl_list_init(&listener->link);
+	listener_unlink(listener);
+
 }
 
 // Converts [0,1] normalized coordinates to layout coordinates, finds the
@@ -280,7 +280,7 @@ void handle_cursor_touch_up(struct wl_listener *listener, void *data) {
 		if (point->touch_protocol && point->surface) {
 			wlr_seat_touch_notify_up(server.seat, event->time_msec,
 									 event->touch_id);
-			wl_list_remove(&point->surface_destroy.link);
+			listener_unlink(&point->surface_destroy);
 		} else if (config.touch_enable_mouse_emulation &&
 				   simulating_pointer_from_touch &&
 				   point->touch_id == pointer_touch_id) {
@@ -319,7 +319,7 @@ void handle_cursor_touch_cancel(struct wl_listener *listener, void *data) {
 		if (point->touch_protocol && point->surface) {
 			// NULL clears all touch focus on the seat.
 			wlr_seat_touch_notify_cancel(server.seat, NULL);
-			wl_list_remove(&point->surface_destroy.link);
+			listener_unlink(&point->surface_destroy);
 		} else if (config.touch_enable_mouse_emulation &&
 				   simulating_pointer_from_touch &&
 				   point->touch_id == pointer_touch_id) {
@@ -356,7 +356,7 @@ void touch_finish_all(void) {
 
 	wl_list_for_each_safe(point, tmp, &server.touch_points, link) {
 		if (point->touch_protocol && point->surface)
-			wl_list_remove(&point->surface_destroy.link);
+			listener_unlink(&point->surface_destroy);
 		wl_list_remove(&point->link);
 		free(point);
 	}

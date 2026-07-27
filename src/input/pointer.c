@@ -486,7 +486,7 @@ handle_cursor_button(struct wl_listener *listener, void *data) {
 void handle_last_cursor_surface_destroy(struct wl_listener *listener,
 										void *data) {
 	last_cursor.surface = NULL;
-	wl_list_remove(&listener->link);
+	listener_unlink(listener);
 }
 
 void handle_request_set_cursor_shape(struct wl_listener *listener, void *data) {
@@ -504,7 +504,7 @@ void handle_request_set_cursor_shape(struct wl_listener *listener, void *data) {
 		/* Remove surface destroy listener if active */
 		if (last_cursor.surface &&
 			server.last_cursor_surface_destroy_listener.link.prev != NULL)
-			wl_list_remove(&server.last_cursor_surface_destroy_listener.link);
+			listener_unlink(&server.last_cursor_surface_destroy_listener);
 
 		last_cursor.shape = event->shape;
 		last_cursor.surface = NULL;
@@ -763,7 +763,7 @@ void handle_drag_icon_destroy(struct wl_listener *listener, void *data) {
 	/* Focus enter isn't sent during drag, so refocus the focused node. */
 	client_focus(client_focus_top(server.selected_monitor), 1);
 	pointer_process_motion(0, NULL, 0, 0, 0, 0);
-	wl_list_remove(&listener->link);
+	listener_unlink(listener);
 	free(listener);
 }
 
@@ -783,8 +783,8 @@ void handle_pointer_constraint_destroy(struct wl_listener *listener,
 		pointer_hint_applied = false;
 	}
 
-	wl_list_remove(&pointer_constraint->destroy.link);
-	wl_list_remove(&pointer_constraint->commit.link);
+	listener_unlink(&pointer_constraint->destroy);
+	listener_unlink(&pointer_constraint->commit);
 	free(pointer_constraint);
 }
 
@@ -1547,7 +1547,7 @@ void handle_request_set_cursor(struct wl_listener *listener, void *data) {
 		/* Clear previous surface destroy listener if any */
 		if (last_cursor.surface &&
 			server.last_cursor_surface_destroy_listener.link.prev != NULL)
-			wl_list_remove(&server.last_cursor_surface_destroy_listener.link);
+			listener_unlink(&server.last_cursor_surface_destroy_listener);
 
 		last_cursor.shape = 0;
 		last_cursor.surface = event->surface;

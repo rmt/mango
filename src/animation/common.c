@@ -1,6 +1,7 @@
 #include "mango/animation/common.h"
 #include "mango/common/scene_node.h"
 #include "mango/common/server.h"
+#include "mango/common/util.h"
 #include "mango/config/parse.h"
 #include "mango/manage/client.h"
 #include "mango/manage/monitor.h"
@@ -39,7 +40,7 @@ struct dvec2 calculate_animation_curve_at(double t, int32_t type) {
 }
 void handle_snapshot_meta_destroy(struct wl_listener *listener, void *data) {
 	SnapshotMetadata *meta = wl_container_of(listener, meta, destroy);
-	wl_list_remove(&meta->destroy.link);
+	listener_unlink(&meta->destroy);
 	free(meta);
 }
 void init_baked_points(void) {
