@@ -7714,7 +7714,9 @@ int32_t main(int32_t argc, char *argv[]) {
 		} else if (c == 'c') {
 			snprintf(cli_config_path, sizeof(cli_config_path), "%s", optarg);
 		} else if (c == 'p') {
-			return parse_config() ? EXIT_SUCCESS : EXIT_FAILURE;
+			bool config_ok = parse_config();
+			free_config();
+			return config_ok ? EXIT_SUCCESS : EXIT_FAILURE;
 		} else {
 			goto usage;
 		}
@@ -7730,6 +7732,7 @@ int32_t main(int32_t argc, char *argv[]) {
 	setup();
 	run(startup_cmd);
 	cleanup();
+	free_config();
 	return EXIT_SUCCESS;
 usage:
 	printf("Usage: mango [OPTIONS]\n"
