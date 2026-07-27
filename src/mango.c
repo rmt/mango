@@ -7244,6 +7244,16 @@ void updatemons(struct wl_listener *listener, void *data) {
 			wlr_output_layout_add_auto(output_layout, m->wlr_output);
 	}
 
+	if (!selmon || !selmon->wlr_output || !selmon->wlr_output->enabled) {
+		selmon = NULL;
+		wl_list_for_each(m, &mons, link) {
+			if (m->wlr_output && m->wlr_output->enabled) {
+				selmon = m;
+				break;
+			}
+		}
+	}
+
 	/* Now that we update the output layout we can get its box */
 	wlr_output_layout_get_box(output_layout, NULL, &sgeom);
 
