@@ -2532,6 +2532,7 @@ void handle_client_unmap(struct wl_listener *listener, void *data) {
 	Client *c = wl_container_of(listener, c, unmap);
 	Monitor *m = NULL;
 	Client *nextfocus = NULL;
+	struct wlr_surface *surface = client_surface(c);
 	c->iskilling = 1;
 	if (c->tab_prev || c->tab_next)
 		tab_detach_client(c);
@@ -2636,7 +2637,7 @@ void handle_client_unmap(struct wl_listener *listener, void *data) {
 #endif
 		if (c == server.exclusive_focus)
 			server.exclusive_focus = NULL;
-		if (client_surface(c) == server.seat->keyboard_state.focused_surface)
+		if (surface == server.seat->keyboard_state.focused_surface)
 			client_focus(client_focus_top(server.selected_monitor), 1);
 	} else {
 
@@ -2691,7 +2692,20 @@ void handle_client_unmap(struct wl_listener *listener, void *data) {
 
 	init_client_properties(c);
 
-	wlr_scene_node_destroy(&c->scene->node);
+	if (surface && surface->data == c->scene)
+		surface->data = NULL;
+	if (c->scene)
+		wlr_scene_node_destroy(&c->scene->node);
+	c->scene = NULL;
+	c->scene_surface = NULL;
+	c->overview_scene_surface = NULL;
+	c->border = NULL;
+	c->droparea = NULL;
+	c->shadow = NULL;
+	c->shield = NULL;
+	c->blur = NULL;
+	for (size_t i = 0; i < LENGTH(c->splitindicator); i++)
+		c->splitindicator[i] = NULL;
 	printstatus(IPC_WATCH_ARRANGGE);
 	pointer_process_motion(0, NULL, 0, 0, 0, 0);
 }
@@ -2699,6 +2713,17 @@ void handle_client_unmap(struct wl_listener *listener, void *data) {
 void handle_client_destroy(struct wl_listener *listener, void *data) {
 	/* Called when the xdg_toplevel is destroyed. */
 	Client *c = wl_container_of(listener, c, destroy);
+#ifdef XWAYLAND
+	struct wlr_xwayland_surface *xsurface = NULL;
+#endif
+	struct wlr_xdg_surface *xdg_surface = NULL;
+
+#ifdef XWAYLAND
+	if (c->type != XDGShell)
+		xsurface = c->surface.xwayland;
+	else
+#endif
+		xdg_surface = c->surface.xdg;
 	wl_list_remove(&c->destroy.link);
 	wl_list_remove(&c->set_title.link);
 	wl_list_remove(&c->fullscreen.link);
@@ -2727,6 +2752,13 @@ void handle_client_destroy(struct wl_listener *listener, void *data) {
 		wl_list_remove(&c->destroy_decoration.link);
 		wl_list_remove(&c->set_decoration_mode.link);
 	}
+#ifdef XWAYLAND
+	if (xsurface && xsurface->data == c)
+		xsurface->data = NULL;
+#endif
+	if (xdg_surface && xdg_surface->data == c)
+		xdg_surface->data = NULL;
+
 	switcher_remove_client(c);
 	pointer_client_destroyed(c);
 	free(c);

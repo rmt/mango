@@ -44,6 +44,7 @@ typedef struct LayerSurface {
 typedef struct Popup {
 	uint32_t type; // must at first in struct
 	struct wlr_xdg_popup *wlr_popup;
+	struct wlr_scene_tree *scene;
 	struct wl_listener destroy;
 	struct wl_listener commit;
 	struct wl_listener reposition;
