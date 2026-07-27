@@ -301,13 +301,13 @@ void set_default_key_bindings(Config *config) {
 		sizeof(default_key_bindings) / sizeof(KeyBinding);
 
 	// Reallocates memory to hold the new default bindings.
-	config->key_bindings =
-		realloc(config->key_bindings,
-				(config->key_bindings_count + default_key_bindings_count) *
-					sizeof(KeyBinding));
-	if (!config->key_bindings) {
+	KeyBinding *new_key_bindings = realloc(
+		config->key_bindings,
+		(config->key_bindings_count + default_key_bindings_count) *
+			sizeof(*config->key_bindings));
+	if (!new_key_bindings)
 		return;
-	}
+	config->key_bindings = new_key_bindings;
 
 	// Copies the default bindings into the config key binding array.
 	for (size_t i = 0; i < default_key_bindings_count; i++) {

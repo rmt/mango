@@ -72,10 +72,14 @@ void free_config(void) {
 			rule->animation_type_open = ANIM_TYPE_UNSET;
 			rule->animation_type_close = ANIM_TYPE_UNSET;
 			rule->monitor = NULL;
-			// Frees arg.v of globalkeybinding if dynamically allocated.
+			// Frees arguments of globalkeybinding if dynamically allocated.
 			if (rule->globalkeybinding.arg.v) {
 				free((void *)rule->globalkeybinding.arg.v);
 			}
+			if (rule->globalkeybinding.arg.v2)
+				free((void *)rule->globalkeybinding.arg.v2);
+			if (rule->globalkeybinding.arg.v3)
+				free((void *)rule->globalkeybinding.arg.v3);
 		}
 		free(config.window_rules);
 		config.window_rules = NULL;

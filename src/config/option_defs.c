@@ -1006,15 +1006,16 @@ bool parse_option(Config *config, char *key, char *value, int line_number) {
 			convert_hex_to_rgba(config->overlaycolor, color);
 		}
 	} else if (strcmp(key, "monitor_rule") == 0) {
-		config->monitor_rules =
-			realloc(config->monitor_rules, (config->monitor_rules_count + 1) *
-											   sizeof(ConfigMonitorRule));
-		if (!config->monitor_rules) {
+		ConfigMonitorRule *new_monitor_rules = realloc(
+			config->monitor_rules,
+			(config->monitor_rules_count + 1) * sizeof(*config->monitor_rules));
+		if (!new_monitor_rules) {
 			mango_error(false, WLR_ERROR,
 						"Failed to allocate "
 						"memory for monitor rules\n");
 			return false;
 		}
+		config->monitor_rules = new_monitor_rules;
 
 		ConfigMonitorRule *rule =
 			&config->monitor_rules[config->monitor_rules_count];
@@ -1124,15 +1125,16 @@ bool parse_option(Config *config, char *key, char *value, int line_number) {
 		config->monitor_rules_count++;
 		return !parse_error;
 	} else if (strcmp(key, "tag_rule") == 0) {
-		config->tag_rules =
-			realloc(config->tag_rules,
-					(config->tag_rules_count + 1) * sizeof(ConfigTagRule));
-		if (!config->tag_rules) {
+		ConfigTagRule *new_tag_rules = realloc(
+			config->tag_rules,
+			(config->tag_rules_count + 1) * sizeof(*config->tag_rules));
+		if (!new_tag_rules) {
 			mango_error(false, WLR_ERROR,
 						"Failed to allocate "
 						"memory for tag rules\n");
 			return false;
 		}
+		config->tag_rules = new_tag_rules;
 
 		ConfigTagRule *rule = &config->tag_rules[config->tag_rules_count];
 		memset(rule, 0, sizeof(ConfigTagRule));
@@ -1220,15 +1222,16 @@ bool parse_option(Config *config, char *key, char *value, int line_number) {
 		config->tag_rules_count++;
 		return !parse_error;
 	} else if (strcmp(key, "layer_rule") == 0) {
-		config->layer_rules =
-			realloc(config->layer_rules,
-					(config->layer_rules_count + 1) * sizeof(ConfigLayerRule));
-		if (!config->layer_rules) {
+		ConfigLayerRule *new_layer_rules = realloc(
+			config->layer_rules,
+			(config->layer_rules_count + 1) * sizeof(*config->layer_rules));
+		if (!new_layer_rules) {
 			mango_error(false, WLR_ERROR,
 						"Failed to allocate "
 						"memory for layer rules\n");
 			return false;
 		}
+		config->layer_rules = new_layer_rules;
 
 		ConfigLayerRule *rule = &config->layer_rules[config->layer_rules_count];
 		memset(rule, 0, sizeof(ConfigLayerRule));
@@ -1290,15 +1293,16 @@ bool parse_option(Config *config, char *key, char *value, int line_number) {
 		return !parse_error;
 	} else if (strcmp(key, "window_rule") == 0 ||
 			   strcmp(key, "window_rule_once") == 0) {
-		config->window_rules =
-			realloc(config->window_rules,
-					(config->window_rules_count + 1) * sizeof(ConfigWinRule));
-		if (!config->window_rules) {
+		ConfigWinRule *new_window_rules = realloc(
+			config->window_rules,
+			(config->window_rules_count + 1) * sizeof(*config->window_rules));
+		if (!new_window_rules) {
 			mango_error(false, WLR_ERROR,
 						"Failed to allocate "
 						"memory for window rules\n");
 			return false;
 		}
+		config->window_rules = new_window_rules;
 
 		ConfigWinRule *rule = &config->window_rules[config->window_rules_count];
 		memset(rule, 0, sizeof(ConfigWinRule));
@@ -1517,15 +1521,16 @@ bool parse_option(Config *config, char *key, char *value, int line_number) {
 		config->window_rules_count++;
 		return !parse_error;
 	} else if (strcmp(key, "device_rule") == 0) {
-		config->device_rules =
-			realloc(config->device_rules, (config->device_rules_count + 1) *
-											  sizeof(ConfigDeviceRule));
-		if (!config->device_rules) {
+		ConfigDeviceRule *new_device_rules = realloc(
+			config->device_rules,
+			(config->device_rules_count + 1) * sizeof(*config->device_rules));
+		if (!new_device_rules) {
 			mango_error(false, WLR_ERROR,
 						"Failed to allocate "
 						"memory for device rules\n");
 			return false;
 		}
+		config->device_rules = new_device_rules;
 
 		ConfigDeviceRule *rule =
 			&config->device_rules[config->device_rules_count];
@@ -1728,9 +1733,9 @@ bool parse_option(Config *config, char *key, char *value, int line_number) {
 		}
 
 		env->type = strdup(env_type);
-		config->env = realloc(config->env,
-							  (config->env_count + 1) * sizeof(*config->env));
-		if (!config->env) {
+		ConfigEnv **new_env =
+			realloc(config->env, (config->env_count + 1) * sizeof(*config->env));
+		if (!new_env) {
 			free(env->type);
 			free(env->value);
 			free(env);
@@ -1739,6 +1744,7 @@ bool parse_option(Config *config, char *key, char *value, int line_number) {
 						"allocate memory for env\n");
 			return false;
 		}
+		config->env = new_env;
 
 		config->env[config->env_count] = env;
 		config->env_count++;
@@ -1811,15 +1817,16 @@ bool parse_option(Config *config, char *key, char *value, int line_number) {
 		config->exec_once_count++;
 
 	} else if (regex_match("^bind[s|l|r|p|c]*$", key)) {
-		config->key_bindings =
-			realloc(config->key_bindings,
-					(config->key_bindings_count + 1) * sizeof(KeyBinding));
-		if (!config->key_bindings) {
+		KeyBinding *new_key_bindings = realloc(
+			config->key_bindings,
+			(config->key_bindings_count + 1) * sizeof(*config->key_bindings));
+		if (!new_key_bindings) {
 			mango_error(false, WLR_ERROR,
 						"Failed to allocate "
 						"memory for key bindings\n");
 			return false;
 		}
+		config->key_bindings = new_key_bindings;
 
 		KeyBinding *binding = &config->key_bindings[config->key_bindings_count];
 		memset(binding, 0, sizeof(KeyBinding));
@@ -1907,15 +1914,16 @@ bool parse_option(Config *config, char *key, char *value, int line_number) {
 		}
 
 	} else if (strncmp(key, "mousebind", 9) == 0) {
-		config->mouse_bindings =
-			realloc(config->mouse_bindings,
-					(config->mouse_bindings_count + 1) * sizeof(MouseBinding));
-		if (!config->mouse_bindings) {
+		MouseBinding *new_mouse_bindings = realloc(
+			config->mouse_bindings,
+			(config->mouse_bindings_count + 1) * sizeof(*config->mouse_bindings));
+		if (!new_mouse_bindings) {
 			mango_error(false, WLR_ERROR,
 						"Failed to allocate "
 						"memory for mouse bindings\n");
 			return false;
 		}
+		config->mouse_bindings = new_mouse_bindings;
 
 		MouseBinding *binding =
 			&config->mouse_bindings[config->mouse_bindings_count];
@@ -1993,15 +2001,16 @@ bool parse_option(Config *config, char *key, char *value, int line_number) {
 			config->mouse_bindings_count++;
 		}
 	} else if (strncmp(key, "axisbind", 8) == 0) {
-		config->axis_bindings =
-			realloc(config->axis_bindings,
-					(config->axis_bindings_count + 1) * sizeof(AxisBinding));
-		if (!config->axis_bindings) {
+		AxisBinding *new_axis_bindings = realloc(
+			config->axis_bindings,
+			(config->axis_bindings_count + 1) * sizeof(*config->axis_bindings));
+		if (!new_axis_bindings) {
 			mango_error(false, WLR_ERROR,
 						"Failed to allocate "
 						"memory for axis bindings\n");
 			return false;
 		}
+		config->axis_bindings = new_axis_bindings;
 
 		AxisBinding *binding =
 			&config->axis_bindings[config->axis_bindings_count];
@@ -2072,15 +2081,16 @@ bool parse_option(Config *config, char *key, char *value, int line_number) {
 		}
 
 	} else if (strncmp(key, "switchbind", 10) == 0) {
-		config->switch_bindings = realloc(config->switch_bindings,
-										  (config->switch_bindings_count + 1) *
-											  sizeof(SwitchBinding));
-		if (!config->switch_bindings) {
+		SwitchBinding *new_switch_bindings = realloc(
+			config->switch_bindings,
+			(config->switch_bindings_count + 1) * sizeof(*config->switch_bindings));
+		if (!new_switch_bindings) {
 			mango_error(false, WLR_ERROR,
 						"Failed to allocate "
 						"memory for switch bindings\n");
 			return false;
 		}
+		config->switch_bindings = new_switch_bindings;
 
 		SwitchBinding *binding =
 			&config->switch_bindings[config->switch_bindings_count];
@@ -2144,15 +2154,16 @@ bool parse_option(Config *config, char *key, char *value, int line_number) {
 		}
 
 	} else if (strncmp(key, "gesturebind", 11) == 0) {
-		config->gesture_bindings = realloc(
+		GestureBinding *new_gesture_bindings = realloc(
 			config->gesture_bindings,
-			(config->gesture_bindings_count + 1) * sizeof(GestureBinding));
-		if (!config->gesture_bindings) {
+			(config->gesture_bindings_count + 1) * sizeof(*config->gesture_bindings));
+		if (!new_gesture_bindings) {
 			mango_error(false, WLR_ERROR,
 						"Failed to allocate "
 						"memory for axis gesturebind\n");
 			return false;
 		}
+		config->gesture_bindings = new_gesture_bindings;
 
 		GestureBinding *binding =
 			&config->gesture_bindings[config->gesture_bindings_count];

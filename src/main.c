@@ -969,8 +969,11 @@ int32_t main(int32_t argc, char *argv[]) {
 	if (optind < argc)
 		goto usage;
 
-	if (check_config)
-		return parse_config() ? EXIT_SUCCESS : EXIT_FAILURE;
+	if (check_config) {
+		bool config_ok = parse_config();
+		free_config();
+		return config_ok ? EXIT_SUCCESS : EXIT_FAILURE;
+	}
 
 	increase_nofile_limit();
 
@@ -982,6 +985,7 @@ int32_t main(int32_t argc, char *argv[]) {
 	setup();
 	run(startup_cmd, readiness_fd);
 	cleanup();
+	free_config();
 	return EXIT_SUCCESS;
 usage:
 	printf("Usage: mango [OPTIONS]\n"
