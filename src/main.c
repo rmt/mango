@@ -151,6 +151,14 @@ void cleanup_listeners(void) {
 	listener_unlink(&server.cursor_frame_listener);
 	listener_unlink(&server.cursor_motion_listener);
 	listener_unlink(&server.cursor_motion_absolute_listener);
+	listener_unlink(&server.cursor_swipe_begin_listener);
+	listener_unlink(&server.cursor_swipe_update_listener);
+	listener_unlink(&server.cursor_swipe_end_listener);
+	listener_unlink(&server.cursor_pinch_begin_listener);
+	listener_unlink(&server.cursor_pinch_update_listener);
+	listener_unlink(&server.cursor_pinch_end_listener);
+	listener_unlink(&server.cursor_hold_begin_listener);
+	listener_unlink(&server.cursor_hold_end_listener);
 	listener_unlink(&server.cursor_touch_down_listener);
 	listener_unlink(&server.cursor_touch_up_listener);
 	listener_unlink(&server.cursor_touch_cancel_listener);
@@ -217,6 +225,25 @@ void cleanup(void) {
 
 	mango_im_relay_finish(server.input_method_relay);
 	server.input_method_relay = NULL;
+
+	if (server.recreate_renderer_source) {
+		wl_event_source_remove(server.recreate_renderer_source);
+		server.recreate_renderer_source = NULL;
+	}
+	if (server.hide_cursor_source) {
+		wl_event_source_remove(server.hide_cursor_source);
+		server.hide_cursor_source = NULL;
+	}
+	if (server.keep_idle_inhibit_source) {
+		wl_event_source_remove(server.keep_idle_inhibit_source);
+		server.keep_idle_inhibit_source = NULL;
+	}
+#ifdef XWAYLAND
+	if (server.sync_keymap) {
+		wl_event_source_remove(server.sync_keymap);
+		server.sync_keymap = NULL;
+	}
+#endif
 
 	/* If it's not destroyed manually it will cause a use-after-free of
 	 * wlr_seat. Destroy it until it's fixed in the wlroots side */
@@ -723,18 +750,22 @@ void setup(void) {
 				  &server.new_virtual_pointer_listener);
 
 	server.pointer_gestures = wlr_pointer_gestures_v1_create(server.display);
-	LISTEN_STATIC(&server.cursor->events.swipe_begin,
-				  handle_cursor_swipe_begin);
-	LISTEN_STATIC(&server.cursor->events.swipe_update,
-				  handle_cursor_swipe_update);
-	LISTEN_STATIC(&server.cursor->events.swipe_end, handle_cursor_swipe_end);
-	LISTEN_STATIC(&server.cursor->events.pinch_begin,
-				  handle_cursor_pinch_begin);
-	LISTEN_STATIC(&server.cursor->events.pinch_update,
-				  handle_cursor_pinch_update);
-	LISTEN_STATIC(&server.cursor->events.pinch_end, handle_cursor_pinch_end);
-	LISTEN_STATIC(&server.cursor->events.hold_begin, handle_cursor_hold_begin);
-	LISTEN_STATIC(&server.cursor->events.hold_end, handle_cursor_hold_end);
+	LISTEN(&server.cursor->events.swipe_begin,
+		   &server.cursor_swipe_begin_listener, handle_cursor_swipe_begin);
+	LISTEN(&server.cursor->events.swipe_update,
+		   &server.cursor_swipe_update_listener, handle_cursor_swipe_update);
+	LISTEN(&server.cursor->events.swipe_end,
+		   &server.cursor_swipe_end_listener, handle_cursor_swipe_end);
+	LISTEN(&server.cursor->events.pinch_begin,
+		   &server.cursor_pinch_begin_listener, handle_cursor_pinch_begin);
+	LISTEN(&server.cursor->events.pinch_update,
+		   &server.cursor_pinch_update_listener, handle_cursor_pinch_update);
+	LISTEN(&server.cursor->events.pinch_end,
+		   &server.cursor_pinch_end_listener, handle_cursor_pinch_end);
+	LISTEN(&server.cursor->events.hold_begin,
+		   &server.cursor_hold_begin_listener, handle_cursor_hold_begin);
+	LISTEN(&server.cursor->events.hold_end,
+		   &server.cursor_hold_end_listener, handle_cursor_hold_end);
 
 	/* Touch support: initialize the touch point list and connect cursor touch
 	 * events. */
