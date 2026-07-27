@@ -3349,11 +3349,32 @@ void createlayersurface(struct wl_listener *listener, void *data) {
 	l->mon = layer_surface->output->data;
 	l->scene_layer =
 		wlr_scene_layer_surface_v1_create(scene_layer, layer_surface);
+	if (!l->scene_layer) {
+		listener_unlink(&l->map);
+		listener_unlink(&l->surface_commit);
+		listener_unlink(&l->unmap);
+		if (layer_surface->data == l)
+			layer_surface->data = NULL;
+		free(l);
+		wlr_layer_surface_v1_destroy(layer_surface);
+		return;
+	}
 	l->scene = l->scene_layer->tree;
 	l->popups = surface->data = wlr_scene_tree_create(
 		layer_surface->current.layer < ZWLR_LAYER_SHELL_V1_LAYER_TOP
 			? layers[LyrTop]
 			: scene_layer);
+	if (!l->popups) {
+		listener_unlink(&l->map);
+		listener_unlink(&l->surface_commit);
+		listener_unlink(&l->unmap);
+		if (layer_surface->data == l)
+			layer_surface->data = NULL;
+		wlr_scene_node_destroy(&l->scene->node);
+		free(l);
+		wlr_layer_surface_v1_destroy(layer_surface);
+		return;
+	}
 	l->scene->node.data = l->popups->node.data = l;
 
 	LISTEN(&l->scene->node.events.destroy, &l->destroy, destroylayernodenotify);
