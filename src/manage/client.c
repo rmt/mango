@@ -2537,9 +2537,10 @@ void handle_client_unmap(struct wl_listener *listener, void *data) {
 		tab_detach_client(c);
 	switcher_remove_client(c);
 	struct ScrollerStackNode *target_node =
-		c->mon ? find_scroller_node(
-					 c->mon->pertag->scroller_state[get_client_tag_idx(c)], c)
-			   : NULL;
+		c->mon && c->mon->pertag
+			? find_scroller_node(
+				  c->mon->pertag->scroller_state[get_client_tag_idx(c)], c)
+			: NULL;
 	struct ScrollerStackNode *prev_node =
 		target_node ? target_node->prev_in_stack : NULL;
 	struct ScrollerStackNode *next_node =
@@ -2579,7 +2580,7 @@ void handle_client_unmap(struct wl_listener *listener, void *data) {
 	}
 
 	wl_list_for_each(m, &server.monitors, link) {
-		if (!m->wlr_output->enabled) {
+		if (!m->wlr_output || !m->wlr_output->enabled) {
 			continue;
 		}
 		if (c == m->sel) {
@@ -2879,13 +2880,13 @@ void client_set_opacity(Client *c, double opacity) {
 }
 
 void client_ensure_constraint(Client *c) {
-	if (!c || !client_surface(c)) {
+	struct wlr_surface *surface = client_surface(c);
+	if (!surface || !server.pointer_constraints)
 		return;
-	}
 	struct wlr_pointer_constraint_v1 *constraint;
 	wl_list_for_each(constraint, &server.pointer_constraints->constraints,
 					 link) {
-		if (constraint->surface == client_surface(c)) {
+		if (constraint->surface == surface) {
 			pointer_constrain_cursor(constraint);
 			break;
 		}
@@ -2896,6 +2897,7 @@ void client_focus(Client *c, int32_t lift) {
 
 	Client *last_focus_client = NULL;
 	Monitor *um = NULL;
+	struct wlr_surface *surface = client_surface(c);
 
 	struct wlr_surface *old_keyboard_focus_surface =
 		server.seat->keyboard_state.focused_surface;
@@ -2921,7 +2923,7 @@ void client_focus(Client *c, int32_t lift) {
 		client_raise_tab(c);
 	}
 
-	if (c && client_surface(c) == old_keyboard_focus_surface &&
+	if (c && surface == old_keyboard_focus_surface &&
 		server.selected_monitor && server.selected_monitor->sel) {
 		client_ensure_constraint(c);
 		return;
@@ -2982,7 +2984,8 @@ void client_focus(Client *c, int32_t lift) {
 
 	// update other monitor focus disappear
 	wl_list_for_each(um, &server.monitors, link) {
-		if (um->wlr_output->enabled && um != server.selected_monitor &&
+		if (um->wlr_output && um->wlr_output->enabled &&
+			um != server.selected_monitor &&
 			um->sel && !um->sel->iskilling && um->sel->isfocusing) {
 
 			um->sel->isfocusing = false;
@@ -3000,7 +3003,7 @@ void client_focus(Client *c, int32_t lift) {
 
 	/* Deactivate old client if focus is changing */
 	if (old_keyboard_focus_surface &&
-		(!c || client_surface(c) != old_keyboard_focus_surface)) {
+		(!c || surface != old_keyboard_focus_surface)) {
 		/* If an exclusive_focus layer is focused, don't focus or activate
 		 * the client, but only update its position in focus_stack to render its
 		 * border with focuscolor and focus it after the exclusive_focus
@@ -3009,8 +3012,9 @@ void client_focus(Client *c, int32_t lift) {
 		LayerSurface *l = NULL;
 		int32_t type =
 			toplevel_from_wlr_surface(old_keyboard_focus_surface, &w, &l);
-		if (type == LayerShell && l->scene->node.enabled &&
-			l->layer_surface->current.layer >= ZWLR_LAYER_SHELL_V1_LAYER_TOP &&
+		if (type == LayerShell && l && l->scene && l->layer_surface &&
+			l->scene->node.enabled && l->layer_surface->current.layer >=
+				ZWLR_LAYER_SHELL_V1_LAYER_TOP &&
 			l == server.exclusive_focus) {
 			return;
 		} else if (w && w == server.exclusive_focus && client_wants_focus(w)) {
@@ -3055,16 +3059,16 @@ void client_focus(Client *c, int32_t lift) {
 	// set text input focus
 	// must before client_notify_enter,
 	// otherwise the position of text_input will be wrong.
-	mango_im_relay_set_focus(server.input_method_relay, client_surface(c));
+	mango_im_relay_set_focus(server.input_method_relay, surface);
 
 	/* Have a client, so focus its top-level wlr_surface */
-	client_notify_enter(client_surface(c), wlr_seat_get_keyboard(server.seat));
+	client_notify_enter(surface, wlr_seat_get_keyboard(server.seat));
 
 	/* Activate the new client */
-	client_activate_surface(client_surface(c), 1);
+	client_activate_surface(surface, 1);
 
 	if (server.active_constraint &&
-		server.active_constraint->surface != client_surface(c)) {
+		server.active_constraint->surface != surface) {
 		pointer_constrain_cursor(NULL);
 	}
 
@@ -4763,13 +4767,14 @@ void fix_xwayland_coordinate(struct wlr_box *geom) {
 void handle_xwayland_surface_request_activate(struct wl_listener *listener,
 											  void *data) {
 	Client *c = wl_container_of(listener, c, activate);
+	struct wlr_xwayland_surface *xsurface = c ? c->surface.xwayland : NULL;
 	bool need_arrange = false;
 
-	if (!c || c->iskilling || !c->mon || !c->foreign_toplevel ||
-		client_is_unmanaged(c))
+	if (!c || !xsurface || c->iskilling || !c->mon ||
+		!c->foreign_toplevel || client_is_unmanaged(c))
 		return;
 
-	if (c && c->swallowdby)
+	if (c->swallowdby)
 		return;
 
 	if (c->isminimized) {
@@ -4784,14 +4789,15 @@ void handle_xwayland_surface_request_activate(struct wl_listener *listener,
 	}
 
 	if (config.focus_on_activate && !c->istagsilent &&
-		c != server.selected_monitor->sel) {
+		server.selected_monitor && c != server.selected_monitor->sel) {
 		if (!(c->mon == server.selected_monitor &&
 			  c->tags & c->mon->tagset[c->mon->seltags]))
 			client_view_on_monitor(&(Arg){.ui = c->tags}, true, c->mon, true);
-		wlr_xwayland_surface_activate(c->surface.xwayland, 1);
+		wlr_xwayland_surface_activate(xsurface, 1);
 		client_focus(c, 1);
 		need_arrange = true;
-	} else if (c != client_focus_top(server.selected_monitor)) {
+	} else if (!server.selected_monitor ||
+			   c != client_focus_top(server.selected_monitor)) {
 		c->isurgent = 1;
 		if (client_surface_mapped(c))
 			client_update_border_color(c);
@@ -4807,10 +4813,13 @@ void handle_xwayland_surface_request_activate(struct wl_listener *listener,
 void handle_xwayland_surface_request_configure(struct wl_listener *listener,
 											   void *data) {
 	Client *c = wl_container_of(listener, c, configure);
-	if (!c)
-		return;
 	struct wlr_xwayland_surface_configure_event *event = data;
+	struct wlr_xwayland_surface *xsurface = c ? c->surface.xwayland : NULL;
+	struct wlr_surface *surface = client_surface(c);
 	struct wlr_box new_geo;
+
+	if (!c || !event || !xsurface || client_is_parked(c))
+		return;
 	new_geo.x = event->x;
 	new_geo.y = event->y;
 	new_geo.width = event->width;
@@ -4820,11 +4829,11 @@ void handle_xwayland_surface_request_configure(struct wl_listener *listener,
 	xwayland_x11_to_logical(&new_geo, c->xwayland_scale);
 	fix_xwayland_coordinate(&new_geo);
 
-	if (!client_surface_mapped(c)) {
+	if (!surface || !surface->mapped) {
 		struct wlr_box xgeo = new_geo;
 		xwayland_logical_to_x11(&xgeo, c->xwayland_scale);
-		wlr_xwayland_surface_configure(c->surface.xwayland, xgeo.x, xgeo.y,
-									   xgeo.width, xgeo.height);
+		wlr_xwayland_surface_configure(xsurface, xgeo.x, xgeo.y, xgeo.width,
+									   xgeo.height);
 		return;
 	}
 
@@ -4837,9 +4846,18 @@ void handle_xwayland_surface_request_configure(struct wl_listener *listener,
 	if (client_is_unmanaged(c)) {
 		struct wlr_box xgeo = new_geo;
 		xwayland_logical_to_x11(&xgeo, c->xwayland_scale);
-		wlr_scene_node_set_position(&c->scene->node, new_geo.x, new_geo.y);
-		wlr_xwayland_surface_configure(c->surface.xwayland, xgeo.x, xgeo.y,
-									   xgeo.width, xgeo.height);
+		if (c->scene)
+			wlr_scene_node_set_position(&c->scene->node, new_geo.x, new_geo.y);
+		wlr_xwayland_surface_configure(xsurface, xgeo.x, xgeo.y, xgeo.width,
+									   xgeo.height);
+		return;
+	}
+
+	if (!c->mon) {
+		struct wlr_box xgeo = new_geo;
+		xwayland_logical_to_x11(&xgeo, c->xwayland_scale);
+		wlr_xwayland_surface_configure(xsurface, xgeo.x, xgeo.y, xgeo.width,
+									   xgeo.height);
 		return;
 	}
 
@@ -4904,7 +4922,12 @@ void handle_new_xwayland_surface(struct wl_listener *listener, void *data) {
 
 void handle_xwayland_surface_commit(struct wl_listener *listener, void *data) {
 	Client *c = wl_container_of(listener, c, commmitx11);
-	struct wlr_surface_state *state = &c->surface.xwayland->surface->current;
+	struct wlr_xwayland_surface *xsurface = c ? c->surface.xwayland : NULL;
+	struct wlr_surface_state *state;
+
+	if (!c || !xsurface || !xsurface->surface)
+		return;
+	state = &xsurface->surface->current;
 
 	/* Overview card nodes are independent scene_surfaces that auto-update on
 	 * commit. */
@@ -4915,8 +4938,7 @@ void handle_xwayland_surface_commit(struct wl_listener *listener, void *data) {
 
 	if (xgeo.width == (int32_t)state->width &&
 		xgeo.height == (int32_t)state->height &&
-		(int32_t)c->surface.xwayland->x == xgeo.x &&
-		(int32_t)c->surface.xwayland->y == xgeo.y) {
+		(int32_t)xsurface->x == xgeo.x && (int32_t)xsurface->y == xgeo.y) {
 		c->configure_serial = 0;
 	}
 
@@ -4945,15 +4967,17 @@ void handle_xwayland_surface_dissociate(struct wl_listener *listener,
 void handle_xwayland_surface_set_hints(struct wl_listener *listener,
 									   void *data) {
 	Client *c = wl_container_of(listener, c, set_hints);
-	struct wlr_surface *surface = client_surface(c);
-	if (c == client_focus_top(server.selected_monitor) || !c ||
-		!c->surface.xwayland->hints)
+	struct wlr_xwayland_surface *xsurface = c ? c->surface.xwayland : NULL;
+
+	if (!c || !xsurface || !xsurface->hints ||
+		(server.selected_monitor &&
+		 c == client_focus_top(server.selected_monitor)))
 		return;
 
-	c->isurgent = xcb_icccm_wm_hints_get_urgency(c->surface.xwayland->hints);
+	c->isurgent = xcb_icccm_wm_hints_get_urgency(xsurface->hints);
 	printstatus(IPC_WATCH_ARRANGGE);
 
-	if (c->isurgent && surface && surface->mapped)
+	if (c->isurgent && client_surface_mapped(c))
 		client_update_border_color(c);
 }
 
