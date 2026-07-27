@@ -1613,9 +1613,14 @@ void client_apply_rules(Client *c) {
 		return;
 
 	// apply swallow rule
+	bool initial_commit = false;
+#ifdef XWAYLAND
+	if (!client_is_x11(c))
+#endif
+		initial_commit = c->surface.xdg && c->surface.xdg->initial_commit;
 	c->pid = client_get_pid(c);
 	if (!c->noswallow && !c->isfloating && !client_is_float_type(c) &&
-		!c->surface.xdg->initial_commit) {
+		!initial_commit) {
 		Client *p = client_find_terminal(c);
 		if (p && !p->isminimized) {
 			c->swallowing = p;
@@ -2505,6 +2510,12 @@ void handle_client_destroy(struct wl_listener *listener, void *data) {
 		listener_unlink(&c->configure);
 		listener_unlink(&c->dissociate);
 		listener_unlink(&c->set_hints);
+		/* These listeners are normally removed on unmap or dissociate, but the
+		 * Client owns their storage and must not be freed while they are linked. */
+		listener_unlink(&c->map);
+		listener_unlink(&c->unmap);
+		listener_unlink(&c->commmitx11);
+		listener_unlink(&c->set_geometry);
 	} else
 #endif
 	{
@@ -4407,9 +4418,17 @@ void handle_xwayland_surface_commit(struct wl_listener *listener, void *data) {
 void handle_xwayland_surface_associate(struct wl_listener *listener,
 									   void *data) {
 	Client *c = wl_container_of(listener, c, associate);
+	struct wlr_surface *surface = client_surface(c);
 
-	LISTEN(&client_surface(c)->events.map, &c->map, handle_client_map);
-	LISTEN(&client_surface(c)->events.unmap, &c->unmap, handle_client_unmap);
+	listener_unlink(&c->map);
+	listener_unlink(&c->unmap);
+	listener_unlink(&c->commmitx11);
+	listener_unlink(&c->set_geometry);
+
+	if (!surface)
+		return;
+	LISTEN(&surface->events.map, &c->map, handle_client_map);
+	LISTEN(&surface->events.unmap, &c->unmap, handle_client_unmap);
 }
 
 void handle_xwayland_surface_dissociate(struct wl_listener *listener,
@@ -4417,6 +4436,8 @@ void handle_xwayland_surface_dissociate(struct wl_listener *listener,
 	Client *c = wl_container_of(listener, c, dissociate);
 	listener_unlink(&c->map);
 	listener_unlink(&c->unmap);
+	listener_unlink(&c->commmitx11);
+	listener_unlink(&c->set_geometry);
 	c->xwl_root_buffer = NULL;
 	c->xwl_clip_active = false;
 }
