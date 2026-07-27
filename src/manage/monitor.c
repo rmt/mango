@@ -809,6 +809,13 @@ void handle_new_output(struct wl_listener *listener, void *data) {
 	LISTEN(&wlr_output->events.request_state, &m->request_state,
 		   handle_output_request_state);
 
+	if (!wlr_output_is_headless(wlr_output) && server.fallback_output) {
+		/* Destroy it only after the replacement is ready. */
+		struct wlr_output *fallback = server.fallback_output;
+		wlr_output_destroy(fallback);
+		wlr_log(WLR_INFO, "Destroyed fallback headless output");
+	}
+
 	printstatus(IPC_WATCH_ARRANGGE);
 }
 
@@ -834,18 +841,35 @@ void handle_output_destroy(struct wl_listener *listener, void *data) {
 	}
 	cleanup_workspaces_by_monitor(m);
 
+	bool was_fallback = m->wlr_output == server.fallback_output;
 	listener_unlink(&m->destroy);
 	listener_unlink(&m->frame);
 	wl_list_remove(&m->link);
 	listener_unlink(&m->request_state);
 	if (m->lock_surface)
 		handle_session_lock_surface_destroy(&m->destroy_lock_surface, NULL);
-	m->wlr_output->data = NULL;
 
-	wlr_scene_output_destroy(m->scene_output);
-	wlr_output_layout_remove(server.output_layout, m->wlr_output);
+	if (was_fallback) {
+		server.fallback_output = NULL;
+	} else if (server.allow_frame_scheduling &&
+			   wl_list_empty(&server.monitors) && server.headless_backend) {
+		/* Keep a target for client migration when the final output goes. */
+		if (server.selected_monitor == m)
+			server.selected_monitor = NULL;
+		server.fallback_output =
+			wlr_headless_add_output(server.headless_backend, 1920, 1080);
+		if (server.fallback_output)
+			wlr_log(WLR_INFO, "Created fallback headless output");
+		else
+			wlr_log(WLR_ERROR, "Failed to create fallback headless output");
+	}
 
+	/* Migrate before discarding the old scene output and layout, so that
+	 * output-leave notifications still refer to the departing output. */
 	monitor_close(m);
+	m->wlr_output->data = NULL;
+	wlr_output_layout_remove(server.output_layout, m->wlr_output);
+	wlr_scene_output_destroy(m->scene_output);
 	if (m->blur) {
 		wlr_scene_node_destroy(&m->blur->node);
 		m->blur = NULL;
@@ -859,7 +883,6 @@ void handle_output_destroy(struct wl_listener *listener, void *data) {
 		wl_event_source_remove(m->skip_frame_timeout);
 		m->skip_frame_timeout = NULL;
 	}
-	m->wlr_output->data = NULL;
 	xdg_output_cleanup_output(m->wlr_output);
 
 	cleanup_monitor_dwindle(m);
@@ -888,7 +911,7 @@ void monitor_close(Monitor *m) {
 
 	if (!nmons) {
 		server.selected_monitor = NULL;
-	} else if (m == server.selected_monitor) {
+	} else if (!server.selected_monitor || m == server.selected_monitor) {
 		do /* don't switch to disabled monitors */
 			server.selected_monitor = wl_container_of(
 				server.monitors.next, server.selected_monitor, link);
