@@ -2717,8 +2717,12 @@ void cleanupmon(struct wl_listener *listener, void *data) {
 	}
 
 	// clean ext-workspaces grouplab
-	wlr_ext_workspace_group_handle_v1_output_leave(m->ext_group, m->wlr_output);
-	wlr_ext_workspace_group_handle_v1_destroy(m->ext_group);
+	if (m->ext_group) {
+		wlr_ext_workspace_group_handle_v1_output_leave(m->ext_group,
+												m->wlr_output);
+		wlr_ext_workspace_group_handle_v1_destroy(m->ext_group);
+		m->ext_group = NULL;
+	}
 	cleanup_workspaces_by_monitor(m);
 
 	wl_list_remove(&m->destroy.link);
@@ -3667,9 +3671,13 @@ void createmon(struct wl_listener *listener, void *data) {
 	}
 
 	// ext workspace group
-	m->ext_group = wlr_ext_workspace_group_handle_v1_create(
-		ext_manager, EXT_WORKSPACE_ENABLE_CAPS);
-	wlr_ext_workspace_group_handle_v1_output_enter(m->ext_group, m->wlr_output);
+	if (ext_manager) {
+		m->ext_group = wlr_ext_workspace_group_handle_v1_create(
+			ext_manager, EXT_WORKSPACE_ENABLE_CAPS);
+		if (m->ext_group)
+			wlr_ext_workspace_group_handle_v1_output_enter(m->ext_group,
+													m->wlr_output);
+	}
 
 	for (i = 1; i <= LENGTH(tags); i++) {
 		add_workspace_by_tag(i, m);
