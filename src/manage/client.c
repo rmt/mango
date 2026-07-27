@@ -79,13 +79,21 @@ int32_t toplevel_from_wlr_surface(struct wlr_surface *s, Client **pc,
 	struct wlr_xwayland_surface *xsurface;
 #endif
 
+	if (pl)
+		*pl = NULL;
+	if (pc)
+		*pc = NULL;
+
 	if (!s)
 		return -1;
 	root_surface = wlr_surface_get_root_surface(s);
+	if (!root_surface)
+		return -1;
 
 #ifdef XWAYLAND
 	if ((xsurface = wlr_xwayland_surface_try_from_wlr_surface(root_surface))) {
-		c = xsurface->data;
+		if (!(c = xsurface->data))
+			return -1;
 		type = c->type;
 		goto end;
 	}
@@ -93,7 +101,8 @@ int32_t toplevel_from_wlr_surface(struct wlr_surface *s, Client **pc,
 
 	if ((layer_surface =
 			 wlr_layer_surface_v1_try_from_wlr_surface(root_surface))) {
-		l = layer_surface->data;
+		if (!(l = layer_surface->data))
+			return -1;
 		type = LayerShell;
 		goto end;
 	}
@@ -111,12 +120,13 @@ int32_t toplevel_from_wlr_surface(struct wlr_surface *s, Client **pc,
 
 			if (!tmp_xdg_surface)
 				return toplevel_from_wlr_surface(xdg_surface->popup->parent, pc,
-												 pl);
+											 pl);
 
 			xdg_surface = tmp_xdg_surface;
 			break;
 		case WLR_XDG_SURFACE_ROLE_TOPLEVEL:
-			c = xdg_surface->data;
+			if (!(c = xdg_surface->data))
+				return -1;
 			type = c->type;
 			goto end;
 		case WLR_XDG_SURFACE_ROLE_NONE:
