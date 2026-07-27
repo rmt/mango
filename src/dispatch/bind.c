@@ -402,7 +402,7 @@ void focus_last(const Arg *arg) {
 
 	wl_list_for_each(c, &server.focus_stack, flink) {
 		if (c->iskilling || c->isminimized || c->isunglobal ||
-			!client_surface(c)->mapped || client_is_unmanaged(c) ||
+			!client_surface_mapped(c) || client_is_unmanaged(c) ||
 			client_is_x11_popup(c))
 			continue;
 
@@ -423,7 +423,7 @@ void focus_last(const Arg *arg) {
 		}
 	}
 
-	if (!tc || !client_surface(tc)->mapped)
+	if (!tc || !client_surface_mapped(tc))
 		return;
 
 	if ((int32_t)tc->tags > 0) {
@@ -2258,7 +2258,7 @@ static void set_overview(const Arg *arg, bool enter) {
 				continue;
 			if (client_is_unmanaged(c) || client_is_x11_popup(c) ||
 				c->isunglobal || c->isminimized || (c->tags & TAG0_MASK) ||
-				!client_surface(c)->mapped ||
+				!client_surface_mapped(c) ||
 				!overview_client_on_current_tags(c, only_current, current_tags))
 				continue;
 			c->animation.overining = true;
@@ -2281,7 +2281,7 @@ static void set_overview(const Arg *arg, bool enter) {
 		wl_list_for_each(c, &server.clients, link) {
 			if (c && c->mon == server.selected_monitor && !c->iskilling &&
 				!client_is_unmanaged(c) && !c->isunglobal && !c->isminimized &&
-				!client_is_x11_popup(c) && client_surface(c)->mapped &&
+				!client_is_x11_popup(c) && client_surface_mapped(c) &&
 				!(c->tags & TAG0_MASK)) {
 				overview_restore(c, &(Arg){.ui = target});
 			}

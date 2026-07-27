@@ -294,7 +294,7 @@ void overview_card_set_corner_radii(Client *c, struct fx_corner_radii corners) {
 void overview_backup_surface(Client *c) {
 	if (c->ov_card_tree)
 		return;
-	if (!client_surface(c) || !client_surface(c)->mapped)
+	if (!client_surface_mapped(c))
 		return;
 
 	// Disables the real surface tree.

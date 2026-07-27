@@ -308,7 +308,7 @@ void buffer_set_effect(Client *c, BufferData data) {
 }
 
 void client_draw_shadow(Client *c, struct ivec2 offsets) {
-	if (c->iskilling || !client_surface(c)->mapped || c->isnoshadow)
+	if (c->iskilling || !client_surface_mapped(c) || c->isnoshadow)
 		return;
 
 	if (!config.shadows || c->isfullscreen ||
@@ -556,7 +556,7 @@ void global_draw_group_bar(Client *c, int32_t x, int32_t y, int32_t width,
 }
 void client_draw_split_border(Client *c, bool hit_no_border,
 							  struct ivec2 offsets) {
-	if (c->iskilling || !c->mon || !client_surface(c)->mapped)
+	if (c->iskilling || !c->mon || !client_surface_mapped(c))
 		return;
 
 	uint32_t tag = get_client_tag_idx(c);
@@ -623,7 +623,7 @@ void client_draw_split_border(Client *c, bool hit_no_border,
 								border_right_y);
 }
 void client_draw_border(Client *c, struct ivec2 offsets) {
-	if (!c || c->iskilling || !client_surface(c)->mapped)
+	if (!c || c->iskilling || !client_surface_mapped(c))
 		return;
 
 	if (c->isfullscreen) {
@@ -920,7 +920,7 @@ void client_set_drop_area(Client *c) {
 	wlr_scene_rect_set_size(c->droparea, drop_box.width, drop_box.height);
 }
 void client_apply_clip(Client *c, float factor) {
-	if (c->iskilling || !client_surface(c)->mapped)
+	if (c->iskilling || !client_surface_mapped(c))
 		return;
 
 	/*
@@ -1438,7 +1438,7 @@ void client_set_pending_state(Client *c) {
 	c->dirty = true;
 }
 void resize_apply(Client *c, struct wlr_box geo, ResizeOpts opts) {
-	if (!c || !c->mon || !client_surface(c)->mapped)
+	if (!c || !c->mon || !client_surface_mapped(c))
 		return;
 
 	if (!c->mon)
@@ -1722,7 +1722,7 @@ bool client_draw_frame(Client *c) {
 	bool need_next_tick = false;
 	bool force_render = false;
 
-	if (!c || !client_surface(c)->mapped)
+	if (!c || !client_surface_mapped(c))
 		return false;
 
 	// always render when scene is disabled

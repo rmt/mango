@@ -123,7 +123,7 @@ static bool pointer_node_enabled(struct wlr_scene_node *node) {
 }
 
 static bool pointer_client_visible(Client *c) {
-	return c && c->mon && !c->mon->isoverview && client_surface(c)->mapped &&
+	return c && c->mon && !c->mon->isoverview && client_surface_mapped(c) &&
 		   VISIBLEON(c, c->mon);
 }
 
@@ -142,7 +142,7 @@ static Client *pointer_confine_rule_client(void) {
 		c = server.selected_monitor->sel;
 	}
 
-	if (!c || !c->confine_pointer || !client_surface(c)->mapped || !c->mon ||
+	if (!c || !c->confine_pointer || !client_surface_mapped(c) || !c->mon ||
 		c->mon->isoverview || c->isminimized || !VISIBLEON(c, c->mon) ||
 		!pointer_node_enabled(&c->scene->node)) {
 		return NULL;
