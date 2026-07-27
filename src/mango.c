@@ -141,6 +141,13 @@
 #define END(A) ((A) + LENGTH(A))
 #define TAGMASK ((1 << LENGTH(tags)) - 1)
 #define LISTEN(E, L, H) wl_signal_add((E), ((L)->notify = (H), (L)))
+static inline void listener_unlink(struct wl_listener *listener) {
+	if (!listener || !listener->link.next || !listener->link.prev)
+		return;
+
+	wl_list_remove(&listener->link);
+	wl_list_init(&listener->link);
+}
 #define ISFULLSCREEN(A)                                                        \
 	((A)->isfullscreen || (A)->ismaximizescreen ||                             \
 	 (A)->overview_ismaximizescreenbak || (A)->overview_isfullscreenbak)
@@ -1488,7 +1495,7 @@ void gpureset(struct wl_listener *listener, void *data) {
 	if (!(alloc = wlr_allocator_autocreate(backend, drw)))
 		die("couldn't recreate allocator");
 
-	wl_list_remove(&gpu_reset.link);
+	listener_unlink(&gpu_reset);
 	wl_signal_add(&drw->events.lost, &gpu_reset);
 
 	wlr_compositor_set_renderer(compositor, drw);
@@ -2585,7 +2592,7 @@ void checkidleinhibitor(struct wlr_surface *exclude) {
 
 void last_cursor_surface_destroy(struct wl_listener *listener, void *data) {
 	last_cursor.surface = NULL;
-	wl_list_remove(&listener->link);
+	listener_unlink(listener);
 }
 
 void setcursorshape(struct wl_listener *listener, void *data) {
@@ -2599,7 +2606,7 @@ void setcursorshape(struct wl_listener *listener, void *data) {
 		/* Remove surface destroy listener if active */
 		if (last_cursor.surface &&
 			last_cursor_surface_destroy_listener.link.prev != NULL)
-			wl_list_remove(&last_cursor_surface_destroy_listener.link);
+			listener_unlink(&last_cursor_surface_destroy_listener);
 
 		last_cursor.shape = event->shape;
 		last_cursor.surface = NULL;
@@ -2610,50 +2617,50 @@ void setcursorshape(struct wl_listener *listener, void *data) {
 }
 
 void cleanuplisteners(void) {
-	wl_list_remove(&ext_manager_commit_listener.link); // 0.7
-	wl_list_remove(&print_status_listener.link);
-	wl_list_remove(&cursor_axis.link);
-	wl_list_remove(&cursor_button.link);
-	wl_list_remove(&cursor_frame.link);
-	wl_list_remove(&cursor_motion.link);
-	wl_list_remove(&cursor_motion_absolute.link);
-	wl_list_remove(&tablet_tool_proximity.link);
-	wl_list_remove(&tablet_tool_axis.link);
-	wl_list_remove(&tablet_tool_button.link);
-	wl_list_remove(&tablet_tool_tip.link);
-	wl_list_remove(&gpu_reset.link);
-	wl_list_remove(&new_idle_inhibitor.link);
-	wl_list_remove(&layout_change.link);
-	wl_list_remove(&new_input_device.link);
-	wl_list_remove(&new_virtual_keyboard.link);
-	wl_list_remove(&new_virtual_pointer.link);
-	wl_list_remove(&new_pointer_constraint.link);
-	wl_list_remove(&new_output.link);
-	wl_list_remove(&new_xdg_toplevel.link);
-	wl_list_remove(&new_xdg_decoration.link);
-	wl_list_remove(&new_xdg_popup.link);
-	wl_list_remove(&new_layer_surface.link);
-	wl_list_remove(&output_mgr_apply.link);
-	wl_list_remove(&output_mgr_test.link);
-	wl_list_remove(&output_power_mgr_set_mode.link);
-	wl_list_remove(&request_activate.link);
-	wl_list_remove(&request_cursor.link);
-	wl_list_remove(&request_set_psel.link);
-	wl_list_remove(&request_set_sel.link);
-	wl_list_remove(&request_set_cursor_shape.link);
-	wl_list_remove(&request_start_drag.link);
-	wl_list_remove(&start_drag.link);
-	wl_list_remove(&new_session_lock.link);
-	wl_list_remove(&new_foreign_toplevel_capture_request.link);
-	wl_list_remove(&tearing_new_object.link);
-	wl_list_remove(&keyboard_shortcuts_inhibit_new_inhibitor.link);
-	wl_list_remove(&ext_image_copy_capture_mgr_new_session.link);
+	listener_unlink(&ext_manager_commit_listener); // 0.7
+	listener_unlink(&print_status_listener);
+	listener_unlink(&cursor_axis);
+	listener_unlink(&cursor_button);
+	listener_unlink(&cursor_frame);
+	listener_unlink(&cursor_motion);
+	listener_unlink(&cursor_motion_absolute);
+	listener_unlink(&tablet_tool_proximity);
+	listener_unlink(&tablet_tool_axis);
+	listener_unlink(&tablet_tool_button);
+	listener_unlink(&tablet_tool_tip);
+	listener_unlink(&gpu_reset);
+	listener_unlink(&new_idle_inhibitor);
+	listener_unlink(&layout_change);
+	listener_unlink(&new_input_device);
+	listener_unlink(&new_virtual_keyboard);
+	listener_unlink(&new_virtual_pointer);
+	listener_unlink(&new_pointer_constraint);
+	listener_unlink(&new_output);
+	listener_unlink(&new_xdg_toplevel);
+	listener_unlink(&new_xdg_decoration);
+	listener_unlink(&new_xdg_popup);
+	listener_unlink(&new_layer_surface);
+	listener_unlink(&output_mgr_apply);
+	listener_unlink(&output_mgr_test);
+	listener_unlink(&output_power_mgr_set_mode);
+	listener_unlink(&request_activate);
+	listener_unlink(&request_cursor);
+	listener_unlink(&request_set_psel);
+	listener_unlink(&request_set_sel);
+	listener_unlink(&request_set_cursor_shape);
+	listener_unlink(&request_start_drag);
+	listener_unlink(&start_drag);
+	listener_unlink(&new_session_lock);
+	listener_unlink(&new_foreign_toplevel_capture_request);
+	listener_unlink(&tearing_new_object);
+	listener_unlink(&keyboard_shortcuts_inhibit_new_inhibitor);
+	listener_unlink(&ext_image_copy_capture_mgr_new_session);
 	if (drm_lease_manager) {
-		wl_list_remove(&drm_lease_request.link);
+		listener_unlink(&drm_lease_request);
 	}
 #ifdef XWAYLAND
-	wl_list_remove(&new_xwayland_surface.link);
-	wl_list_remove(&xwayland_ready.link);
+	listener_unlink(&new_xwayland_surface);
+	listener_unlink(&xwayland_ready);
 #endif
 }
 
@@ -3130,8 +3137,9 @@ static void destroypopup(struct wl_listener *listener, void *data) {
 	if (surface && surface->data == popup->scene)
 		surface->data = NULL;
 
-	wl_list_remove(&popup->destroy.link);
-	wl_list_remove(&popup->reposition.link);
+	listener_unlink(&popup->destroy);
+	listener_unlink(&popup->commit);
+	listener_unlink(&popup->reposition);
 	free(popup);
 }
 
@@ -3168,7 +3176,7 @@ static void commitpopup(struct wl_listener *listener, void *data) {
 
 cleanup_popup_commit:
 
-	wl_list_remove(&popup->commit.link);
+	listener_unlink(&popup->commit);
 	popup->commit.notify = NULL;
 
 	if (should_destroy) {
@@ -3704,7 +3712,7 @@ void destroyinputdevice(struct wl_listener *listener, void *data) {
 		switch (input_dev->wlr_device->type) {
 		case WLR_INPUT_DEVICE_SWITCH: {
 			Switch *sw = (Switch *)input_dev->device_data;
-			wl_list_remove(&sw->toggle.link);
+			listener_unlink(&sw->toggle);
 			free(sw);
 			break;
 		}
@@ -3715,7 +3723,7 @@ void destroyinputdevice(struct wl_listener *listener, void *data) {
 	}
 
 	wl_list_remove(&input_dev->link);
-	wl_list_remove(&input_dev->destroy_listener.link);
+	listener_unlink(&input_dev->destroy_listener);
 	free(input_dev);
 }
 
@@ -3939,10 +3947,10 @@ void destroylayernodenotify(struct wl_listener *listener, void *data) {
 	struct wlr_surface *surface = layer_surface ? layer_surface->surface : NULL;
 
 	wl_list_remove(&l->link);
-	wl_list_remove(&l->destroy.link);
-	wl_list_remove(&l->map.link);
-	wl_list_remove(&l->unmap.link);
-	wl_list_remove(&l->surface_commit.link);
+	listener_unlink(&l->destroy);
+	listener_unlink(&l->map);
+	listener_unlink(&l->unmap);
+	listener_unlink(&l->surface_commit);
 
 	if (layer_surface && layer_surface->data == l)
 		layer_surface->data = NULL;
@@ -3966,9 +3974,9 @@ void destroylock(SessionLock *lock, int32_t unlock) {
 	motionnotify(0, NULL, 0, 0, 0, 0);
 
 destroy:
-	wl_list_remove(&lock->new_surface.link);
-	wl_list_remove(&lock->unlock.link);
-	wl_list_remove(&lock->destroy.link);
+	listener_unlink(&lock->new_surface);
+	listener_unlink(&lock->unlock);
+	listener_unlink(&lock->destroy);
 
 	if (lock->lock && lock->lock->data == lock)
 		lock->lock->data = NULL;
@@ -3985,7 +3993,7 @@ void destroylocksurface(struct wl_listener *listener, void *data) {
 	struct wlr_surface *wlr_surface = lock_surface ? lock_surface->surface : NULL;
 
 	m->lock_surface = NULL;
-	wl_list_remove(&m->destroy_lock_surface.link);
+	listener_unlink(&m->destroy_lock_surface);
 
 	if (wlr_surface)
 		wlr_surface->data = NULL;
@@ -4038,9 +4046,9 @@ destroynotify(struct wl_listener *listener, void *data) {
 	} else
 #endif
 	{
-		wl_list_remove(&c->commit.link);
-		wl_list_remove(&c->map.link);
-		wl_list_remove(&c->unmap.link);
+		listener_unlink(&c->commit);
+		listener_unlink(&c->map);
+		listener_unlink(&c->unmap);
 	}
 #ifdef XWAYLAND
 	if (xsurface && xsurface->data == c)
@@ -4061,7 +4069,7 @@ void destroypointerconstraint(struct wl_listener *listener, void *data) {
 		active_constraint = NULL;
 	}
 
-	wl_list_remove(&pointer_constraint->destroy.link);
+	listener_unlink(&pointer_constraint->destroy);
 	free(pointer_constraint);
 }
 
@@ -4073,9 +4081,9 @@ void destroysessionlock(struct wl_listener *listener, void *data) {
 void destroykeyboardgroup(struct wl_listener *listener, void *data) {
 	KeyboardGroup *group = wl_container_of(listener, group, destroy);
 	wl_event_source_remove(group->key_repeat_source);
-	wl_list_remove(&group->key.link);
-	wl_list_remove(&group->modifiers.link);
-	wl_list_remove(&group->destroy.link);
+	listener_unlink(&group->key);
+	listener_unlink(&group->modifiers);
+	listener_unlink(&group->destroy);
 	if (group->wlr_group && group->wlr_group->data == group)
 		group->wlr_group->data = NULL;
 	wlr_keyboard_group_destroy(group->wlr_group);
@@ -5386,7 +5394,7 @@ void handle_session_destroy(struct wl_listener *listener, void *data) {
 	struct capture_session_tracker *tracker =
 		wl_container_of(listener, tracker, session_destroy);
 	active_capture_count--;
-	wl_list_remove(&tracker->session_destroy.link);
+	listener_unlink(&tracker->session_destroy);
 
 	Client *c = NULL;
 	wl_list_for_each(c, &clients, link) {
@@ -5758,7 +5766,7 @@ void setcursor(struct wl_listener *listener, void *data) {
 		/* Clear previous surface destroy listener if any */
 		if (last_cursor.surface &&
 			last_cursor_surface_destroy_listener.link.prev != NULL)
-			wl_list_remove(&last_cursor_surface_destroy_listener.link);
+			listener_unlink(&last_cursor_surface_destroy_listener);
 
 		last_cursor.shape = 0;
 		last_cursor.surface = event->surface;
@@ -7009,13 +7017,8 @@ void unmapnotify(struct wl_listener *listener, void *data) {
 
 	if (client_is_unmanaged(c)) {
 #ifdef XWAYLAND
-		if (client_is_x11(c)) {
-			if (c->set_geometry.link.prev && c->set_geometry.link.next &&
-				c->set_geometry.link.prev != &c->set_geometry.link) {
-				wl_list_remove(&c->set_geometry.link);
-				wl_list_init(&c->set_geometry.link);
-			}
-		}
+		if (client_is_x11(c))
+			listener_unlink(&c->set_geometry);
 #endif
 		if (c == exclusive_focus)
 			exclusive_focus = NULL;
@@ -7361,7 +7364,7 @@ handle_keyboard_shortcuts_inhibitor_destroy(struct wl_listener *listener,
 	wlr_log(WLR_DEBUG, "Removing keyboard shortcuts inhibitor");
 
 	wl_list_remove(&inhibitor->link);
-	wl_list_remove(&inhibitor->destroy.link);
+	listener_unlink(&inhibitor->destroy);
 	free(inhibitor);
 }
 
