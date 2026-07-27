@@ -531,6 +531,7 @@ typedef struct {
 typedef struct {
 	uint32_t type; // must at first in struct
 	struct wlr_xdg_popup *wlr_popup;
+	struct wlr_scene_tree *scene;
 	struct wl_listener destroy;
 	struct wl_listener commit;
 	struct wl_listener reposition;
@@ -3122,6 +3123,13 @@ static bool popup_unconstrain(Popup *popup) {
 
 static void destroypopup(struct wl_listener *listener, void *data) {
 	Popup *popup = wl_container_of(listener, popup, destroy);
+	struct wlr_surface *surface = NULL;
+
+	if (popup->wlr_popup && popup->wlr_popup->base)
+		surface = popup->wlr_popup->base->surface;
+	if (surface && surface->data == popup->scene)
+		surface->data = NULL;
+
 	wl_list_remove(&popup->destroy.link);
 	wl_list_remove(&popup->reposition.link);
 	free(popup);
@@ -3135,6 +3143,8 @@ static void commitpopup(struct wl_listener *listener, void *data) {
 	struct wlr_xdg_popup *wlr_popup =
 		wlr_xdg_popup_try_from_wlr_surface(surface);
 
+	if (!wlr_popup)
+		return;
 	if (!wlr_popup->base->initial_commit)
 		return;
 
@@ -3145,9 +3155,13 @@ static void commitpopup(struct wl_listener *listener, void *data) {
 
 	wlr_scene_node_raise_to_top(wlr_popup->parent->data);
 
-	wlr_popup->base->surface->data =
+	popup->scene =
 		wlr_scene_xdg_surface_create(wlr_popup->parent->data, wlr_popup->base);
-
+	if (!popup->scene) {
+		should_destroy = true;
+		goto cleanup_popup_commit;
+	}
+	wlr_popup->base->surface->data = popup->scene;
 	popup->wlr_popup = wlr_popup;
 
 	should_destroy = popup_unconstrain(popup);
@@ -3898,6 +3912,11 @@ void cursorwarptohint(void) {
 }
 
 void destroydragicon(struct wl_listener *listener, void *data) {
+	struct wlr_drag_icon *icon = data;
+
+	if (icon)
+		icon->data = NULL;
+
 	/* Focus enter isn't sent during drag, so refocus the focused node. */
 	focusclient(focustop(selmon), 1);
 	motionnotify(0, NULL, 0, 0, 0, 0);
@@ -3916,12 +3935,20 @@ void destroyidleinhibitor(struct wl_listener *listener, void *data) {
 
 void destroylayernodenotify(struct wl_listener *listener, void *data) {
 	LayerSurface *l = wl_container_of(listener, l, destroy);
+	struct wlr_layer_surface_v1 *layer_surface = l->layer_surface;
+	struct wlr_surface *surface = layer_surface ? layer_surface->surface : NULL;
 
 	wl_list_remove(&l->link);
 	wl_list_remove(&l->destroy.link);
 	wl_list_remove(&l->map.link);
 	wl_list_remove(&l->unmap.link);
 	wl_list_remove(&l->surface_commit.link);
+
+	if (layer_surface && layer_surface->data == l)
+		layer_surface->data = NULL;
+	if (surface && surface->data == l->popups)
+		surface->data = NULL;
+
 	wlr_scene_node_destroy(&l->popups->node);
 	free(l);
 }
@@ -3943,6 +3970,9 @@ destroy:
 	wl_list_remove(&lock->unlock.link);
 	wl_list_remove(&lock->destroy.link);
 
+	if (lock->lock && lock->lock->data == lock)
+		lock->lock->data = NULL;
+
 	wlr_scene_node_destroy(&lock->scene->node);
 	cur_lock = NULL;
 	free(lock);
@@ -3952,11 +3982,15 @@ void destroylocksurface(struct wl_listener *listener, void *data) {
 	Monitor *m = wl_container_of(listener, m, destroy_lock_surface);
 	struct wlr_session_lock_surface_v1 *surface,
 		*lock_surface = m->lock_surface;
+	struct wlr_surface *wlr_surface = lock_surface ? lock_surface->surface : NULL;
 
 	m->lock_surface = NULL;
 	wl_list_remove(&m->destroy_lock_surface.link);
 
-	if (lock_surface->surface != seat->keyboard_state.focused_surface) {
+	if (wlr_surface)
+		wlr_surface->data = NULL;
+
+	if (!wlr_surface || wlr_surface != seat->keyboard_state.focused_surface) {
 		if (exclusive_focus && !locked) {
 			reset_exclusive_layers_focus(m);
 		}
@@ -3977,6 +4011,18 @@ void // 0.7 custom
 destroynotify(struct wl_listener *listener, void *data) {
 	/* Called when the xdg_toplevel is destroyed. */
 	Client *c = wl_container_of(listener, c, destroy);
+#ifdef XWAYLAND
+	struct wlr_xwayland_surface *xsurface = NULL;
+#endif
+	struct wlr_xdg_surface *xdg_surface = NULL;
+
+#ifdef XWAYLAND
+	if (c->type != XDGShell)
+		xsurface = c->surface.xwayland;
+	else
+#endif
+		xdg_surface = c->surface.xdg;
+
 	wl_list_remove(&c->destroy.link);
 	wl_list_remove(&c->set_title.link);
 	wl_list_remove(&c->fullscreen.link);
@@ -3996,6 +4042,13 @@ destroynotify(struct wl_listener *listener, void *data) {
 		wl_list_remove(&c->map.link);
 		wl_list_remove(&c->unmap.link);
 	}
+#ifdef XWAYLAND
+	if (xsurface && xsurface->data == c)
+		xsurface->data = NULL;
+#endif
+	if (xdg_surface && xdg_surface->data == c)
+		xdg_surface->data = NULL;
+
 	free(c);
 }
 
@@ -4023,6 +4076,8 @@ void destroykeyboardgroup(struct wl_listener *listener, void *data) {
 	wl_list_remove(&group->key.link);
 	wl_list_remove(&group->modifiers.link);
 	wl_list_remove(&group->destroy.link);
+	if (group->wlr_group && group->wlr_group->data == group)
+		group->wlr_group->data = NULL;
 	wlr_keyboard_group_destroy(group->wlr_group);
 	free(group);
 }
@@ -6875,6 +6930,8 @@ void unmapnotify(struct wl_listener *listener, void *data) {
 	Client *c = wl_container_of(listener, c, unmap);
 	Monitor *m = NULL;
 	Client *nextfocus = NULL;
+	struct wlr_surface *surface = client_surface(c);
+	int32_t i;
 	c->iskilling = 1;
 	struct ScrollerStackNode *target_node =
 		c->mon && c->mon->pertag
@@ -6962,7 +7019,7 @@ void unmapnotify(struct wl_listener *listener, void *data) {
 #endif
 		if (c == exclusive_focus)
 			exclusive_focus = NULL;
-		if (client_surface(c) == seat->keyboard_state.focused_surface)
+		if (surface == seat->keyboard_state.focused_surface)
 			focusclient(focustop(selmon), 1);
 	} else {
 
@@ -7017,7 +7074,18 @@ void unmapnotify(struct wl_listener *listener, void *data) {
 	c->image_capture_source = NULL;
 	init_client_properties(c);
 
-	wlr_scene_node_destroy(&c->scene->node);
+	if (surface && surface->data == c->scene)
+		surface->data = NULL;
+	if (c->scene)
+		wlr_scene_node_destroy(&c->scene->node);
+	c->scene = NULL;
+	c->scene_surface = NULL;
+	c->overview_scene_surface = NULL;
+	c->border = NULL;
+	c->droparea = NULL;
+	c->shadow = NULL;
+	for (i = 0; i < LENGTH(c->splitindicator); i++)
+		c->splitindicator[i] = NULL;
 	printstatus(IPC_WATCH_ARRANGGE);
 	motionnotify(0, NULL, 0, 0, 0, 0);
 }

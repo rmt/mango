@@ -106,6 +106,8 @@ static const char *get_name_from_tag(uint32_t tag) {
 }
 
 void destroy_workspace(struct workspace *workspace) {
+	if (workspace->ext_workspace && workspace->ext_workspace->data == workspace)
+		workspace->ext_workspace->data = NULL;
 	wlr_ext_workspace_handle_v1_destroy(workspace->ext_workspace);
 	wl_list_remove(&workspace->link);
 	free(workspace);
