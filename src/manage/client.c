@@ -4255,7 +4255,7 @@ void handle_xwayland_surface_request_activate(struct wl_listener *listener,
 	struct wlr_xwayland_surface *xsurface = c ? c->surface.xwayland : NULL;
 	bool need_arrange = false;
 
-	if (!c || !xsurface || c->iskilling || !c->mon ||
+	if (server.session_locked || !c || !xsurface || c->iskilling || !c->mon ||
 		!c->foreign_toplevel || client_is_unmanaged(c))
 		return;
 
