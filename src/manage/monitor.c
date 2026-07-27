@@ -1015,6 +1015,17 @@ void handle_output_layout_change(struct wl_listener *listener, void *data) {
 			wlr_output_layout_add_auto(server.output_layout, m->wlr_output);
 	}
 
+	if (!server.selected_monitor || !server.selected_monitor->wlr_output ||
+		!server.selected_monitor->wlr_output->enabled) {
+		server.selected_monitor = NULL;
+		wl_list_for_each(m, &server.monitors, link) {
+			if (m->wlr_output && m->wlr_output->enabled) {
+				server.selected_monitor = m;
+				break;
+			}
+		}
+	}
+
 	/* Now that we update the output layout we can get its box */
 	wlr_output_layout_get_box(server.output_layout, NULL,
 							  &server.scene_geometry);
