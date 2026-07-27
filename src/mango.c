@@ -1811,9 +1811,14 @@ void applyrules(Client *c) {
 		return;
 
 	// apply swallow rule
+	bool initial_commit = false;
+#ifdef XWAYLAND
+	if (!client_is_x11(c))
+#endif
+		initial_commit = c->surface.xdg && c->surface.xdg->initial_commit;
 	c->pid = client_get_pid(c);
 	if (!c->noswallow && !c->isfloating && !client_is_float_type(c) &&
-		!c->surface.xdg->initial_commit) {
+		!initial_commit) {
 		Client *p = termforwin(c);
 		if (p && !p->isminimized) {
 			c->swallowing = p;
@@ -4043,11 +4048,18 @@ destroynotify(struct wl_listener *listener, void *data) {
 	c->decoration = NULL;
 #ifdef XWAYLAND
 	if (c->type != XDGShell) {
-		wl_list_remove(&c->activate.link);
-		wl_list_remove(&c->associate.link);
-		wl_list_remove(&c->configure.link);
-		wl_list_remove(&c->dissociate.link);
-		wl_list_remove(&c->set_hints.link);
+		listener_unlink(&c->activate);
+		listener_unlink(&c->associate);
+		listener_unlink(&c->configure);
+		listener_unlink(&c->dissociate);
+		listener_unlink(&c->set_hints);
+		/* These are normally removed by dissociatex11()/unmapnotify(), but the
+		 * Client owns the listener storage, so detach them before free as a last
+		 * line of defense against Xwayland destroy/dissociate ordering races. */
+		listener_unlink(&c->map);
+		listener_unlink(&c->unmap);
+		listener_unlink(&c->commmitx11);
+		listener_unlink(&c->set_geometry);
 	} else
 #endif
 	{
@@ -7620,6 +7632,11 @@ void associatex11(struct wl_listener *listener, void *data) {
 	Client *c = wl_container_of(listener, c, associate);
 	struct wlr_surface *surface = client_surface(c);
 
+	listener_unlink(&c->map);
+	listener_unlink(&c->unmap);
+	listener_unlink(&c->commmitx11);
+	listener_unlink(&c->set_geometry);
+
 	if (!surface)
 		return;
 	LISTEN(&surface->events.map, &c->map, mapnotify);
@@ -7629,9 +7646,13 @@ void associatex11(struct wl_listener *listener, void *data) {
 
 void dissociatex11(struct wl_listener *listener, void *data) {
 	Client *c = wl_container_of(listener, c, dissociate);
-	wl_list_remove(&c->map.link);
-	wl_list_remove(&c->unmap.link);
-	wl_list_remove(&c->commmitx11.link);
+	listener_unlink(&c->map);
+	listener_unlink(&c->unmap);
+	listener_unlink(&c->commmitx11);
+	/* set_geometry is attached for mapped unmanaged X11 windows. A dissociated
+	 * surface must not move a stale scene node if wlroots emits geometry changes
+	 * before the Xwayland surface itself is destroyed. */
+	listener_unlink(&c->set_geometry);
 }
 
 void sethints(struct wl_listener *listener, void *data) {
