@@ -579,14 +579,16 @@ void pointer_create(struct wlr_pointer *pointer) {
 		configure_pointer(&pointer->base, device);
 
 		InputDevice *input_dev = calloc(1, sizeof(InputDevice));
-		input_dev->wlr_device = &pointer->base;
-		input_dev->libinput_device = device;
+		if (input_dev) {
+			input_dev->wlr_device = &pointer->base;
+			input_dev->libinput_device = device;
 
-		input_dev->destroy_listener.notify = handle_input_device_destroy;
-		wl_signal_add(&pointer->base.events.destroy,
-					  &input_dev->destroy_listener);
+			input_dev->destroy_listener.notify = handle_input_device_destroy;
+			wl_signal_add(&pointer->base.events.destroy,
+						  &input_dev->destroy_listener);
 
-		wl_list_insert(&server.input_devices, &input_dev->link);
+			wl_list_insert(&server.input_devices, &input_dev->link);
+		}
 	}
 	wlr_cursor_attach_input_device(server.cursor, &pointer->base);
 }

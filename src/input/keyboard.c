@@ -111,17 +111,19 @@ void keyboard_create(struct wlr_keyboard *keyboard) {
 		(device = wlr_libinput_get_device_handle(&keyboard->base))) {
 
 		input_dev = calloc(1, sizeof(InputDevice));
-		input_dev->wlr_device = &keyboard->base;
-		input_dev->libinput_device = device;
-		input_dev->device_data = keyboard;
-		input_dev->key_watch.notify = handle_keyboard_key_watch;
-		wl_signal_add(&keyboard->events.key, &input_dev->key_watch);
+		if (input_dev) {
+			input_dev->wlr_device = &keyboard->base;
+			input_dev->libinput_device = device;
+			input_dev->device_data = keyboard;
+			input_dev->key_watch.notify = handle_keyboard_key_watch;
+			wl_signal_add(&keyboard->events.key, &input_dev->key_watch);
 
-		input_dev->destroy_listener.notify = handle_input_device_destroy;
-		wl_signal_add(&keyboard->base.events.destroy,
-					  &input_dev->destroy_listener);
+			input_dev->destroy_listener.notify = handle_input_device_destroy;
+			wl_signal_add(&keyboard->base.events.destroy,
+						  &input_dev->destroy_listener);
 
-		wl_list_insert(&server.input_devices, &input_dev->link);
+			wl_list_insert(&server.input_devices, &input_dev->link);
+		}
 	}
 
 	ConfigDeviceRule *rule = find_device_rule(&keyboard->base);
@@ -305,6 +307,8 @@ void handle_keyboard_shortcuts_inhibit_new_inhibitor(
 
 	KeyboardShortcutsInhibitor *kbsinhibitor =
 		calloc(1, sizeof(KeyboardShortcutsInhibitor));
+	if (!kbsinhibitor)
+		return;
 
 	kbsinhibitor->inhibitor = inhibitor;
 
@@ -537,7 +541,8 @@ void keyboard_group_destroy(struct wl_listener *listener, void *data) {
 		server.last_active_keyboard = NULL;
 	wl_list_remove(&group->link);
 	invalidate_saved_seat_keyboard(group->keyboard);
-	wl_event_source_remove(group->key_repeat_source);
+	if (group->key_repeat_source)
+		wl_event_source_remove(group->key_repeat_source);
 	listener_unlink(&group->key);
 	listener_unlink(&group->modifiers);
 	listener_unlink(&group->destroy);

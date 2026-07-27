@@ -1,5 +1,6 @@
 #include "mango/input/switch.h"
 #include "mango/common/server.h"
+#include "mango/common/util.h"
 #include "mango/config/parse_config.h"
 #include "mango/input/device.h"
 #include "mango/ipc/ipc.h"
@@ -37,6 +38,8 @@ void switch_create(struct wlr_switch *switch_device) {
 		(device = wlr_libinput_get_device_handle(&switch_device->base))) {
 
 		InputDevice *input_dev = calloc(1, sizeof(InputDevice));
+		if (!input_dev)
+			return;
 		input_dev->wlr_device = &switch_device->base;
 		input_dev->libinput_device = device;
 		input_dev->device_data = NULL; // Initialized to NULL.
@@ -47,6 +50,11 @@ void switch_create(struct wlr_switch *switch_device) {
 
 		// Creates Switch-specific data.
 		Switch *sw = calloc(1, sizeof(Switch));
+		if (!sw) {
+			listener_unlink(&input_dev->destroy_listener);
+			free(input_dev);
+			return;
+		}
 		sw->wlr_switch = switch_device;
 		sw->toggle.notify = handle_switch_toggle;
 		sw->input_dev = input_dev;

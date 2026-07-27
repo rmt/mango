@@ -92,7 +92,7 @@ void handle_tablet_pad_tablet_destroy(struct wl_listener *listener,
 	tablet_pad->tablet = NULL;
 
 	listener_unlink(&tablet_pad->tablet_destroy);
-	wl_list_init(&tablet_pad->tablet_destroy.link);
+
 }
 
 void attach_tablet_pad(struct TabletPad *tablet_pad, struct Tablet *tablet) {
@@ -330,6 +330,10 @@ void handle_tablet_tool_proximity(struct wl_listener *listener, void *data) {
 		}
 		tool->tool_v2 = wlr_tablet_tool_create(server.tablet_manager,
 											   server.seat, wlr_tool);
+		if (!tool->tool_v2) {
+			free(tool);
+			return;
+		}
 		tool->surface_destroy.notify = handle_tablet_tool_surface_destroy;
 		tool->destroy.notify = handle_tablet_tool_destroy;
 		tool->set_cursor.notify = handle_tablet_tool_set_cursor;
