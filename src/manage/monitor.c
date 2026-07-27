@@ -789,9 +789,13 @@ void handle_new_output(struct wl_listener *listener, void *data) {
 	special_update_dim(m);
 
 	// ext workspace group
-	m->ext_group = wlr_ext_workspace_group_handle_v1_create(
-		server.ext_workspace_manager, EXT_WORKSPACE_ENABLE_CAPS);
-	wlr_ext_workspace_group_handle_v1_output_enter(m->ext_group, m->wlr_output);
+	if (server.ext_workspace_manager) {
+		m->ext_group = wlr_ext_workspace_group_handle_v1_create(
+			server.ext_workspace_manager, EXT_WORKSPACE_ENABLE_CAPS);
+		if (m->ext_group)
+			wlr_ext_workspace_group_handle_v1_output_enter(m->ext_group,
+													m->wlr_output);
+	}
 
 	for (i = 1; i <= config.tag_num; i++) {
 		add_workspace_by_tag(i, m);
@@ -822,8 +826,12 @@ void handle_output_destroy(struct wl_listener *listener, void *data) {
 	}
 
 	// clean ext-workspaces grouplab
-	wlr_ext_workspace_group_handle_v1_output_leave(m->ext_group, m->wlr_output);
-	wlr_ext_workspace_group_handle_v1_destroy(m->ext_group);
+	if (m->ext_group) {
+		wlr_ext_workspace_group_handle_v1_output_leave(m->ext_group,
+												m->wlr_output);
+		wlr_ext_workspace_group_handle_v1_destroy(m->ext_group);
+		m->ext_group = NULL;
+	}
 	cleanup_workspaces_by_monitor(m);
 
 	listener_unlink(&m->destroy);

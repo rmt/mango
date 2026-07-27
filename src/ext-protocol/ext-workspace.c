@@ -67,14 +67,20 @@ void cleanup_workspaces_by_monitor(Monitor *m) {
 void add_workspace_by_tag(int32_t tag, Monitor *m) {
 	const char *name = get_name_from_tag(tag);
 
-	struct workspace *workspace = ecalloc(1, sizeof(*workspace));
-	wl_list_append(&workspaces, &workspace->link);
+	if (!server.ext_workspace_manager || !m || !m->ext_group || !name)
+		return;
 
+	struct workspace *workspace = ecalloc(1, sizeof(*workspace));
 	workspace->tag = tag;
 	workspace->m = m;
 	workspace->ext_workspace = wlr_ext_workspace_handle_v1_create(
 		server.ext_workspace_manager, name, EXT_WORKSPACE_ENABLE_CAPS);
+	if (!workspace->ext_workspace) {
+		free(workspace);
+		return;
+	}
 
+	wl_list_append(&workspaces, &workspace->link);
 	workspace->ext_workspace->data = workspace;
 
 	wlr_ext_workspace_handle_v1_set_group(workspace->ext_workspace,
@@ -103,10 +109,12 @@ void refresh_monitors_workspaces_status(Monitor *m) {
 	mango_ext_workspace_printstatus(m);
 }
 void workspaces_init() {
+	wl_list_init(&workspaces);
+
 	server.ext_workspace_manager =
 		wlr_ext_workspace_manager_v1_create(server.display, 1);
-
-	wl_list_init(&workspaces);
+	if (!server.ext_workspace_manager)
+		return;
 
 	wl_signal_add(&server.ext_workspace_manager->events.commit,
 				  &server.ext_workspace_commit_listener);
