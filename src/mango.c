@@ -1119,6 +1119,14 @@ static struct wl_listener cursor_button = {.notify = buttonpress};
 static struct wl_listener cursor_frame = {.notify = cursorframe};
 static struct wl_listener cursor_motion = {.notify = motionrelative};
 static struct wl_listener cursor_motion_absolute = {.notify = motionabsolute};
+static struct wl_listener cursor_swipe_begin = {.notify = swipe_begin};
+static struct wl_listener cursor_swipe_update = {.notify = swipe_update};
+static struct wl_listener cursor_swipe_end = {.notify = swipe_end};
+static struct wl_listener cursor_pinch_begin = {.notify = pinch_begin};
+static struct wl_listener cursor_pinch_update = {.notify = pinch_update};
+static struct wl_listener cursor_pinch_end = {.notify = pinch_end};
+static struct wl_listener cursor_hold_begin = {.notify = hold_begin};
+static struct wl_listener cursor_hold_end = {.notify = hold_end};
 static struct wl_listener gpu_reset = {.notify = gpureset};
 static struct wl_listener layout_change = {.notify = updatemons};
 static struct wl_listener new_idle_inhibitor = {.notify = createidleinhibitor};
@@ -2629,6 +2637,14 @@ void cleanuplisteners(void) {
 	listener_unlink(&cursor_frame);
 	listener_unlink(&cursor_motion);
 	listener_unlink(&cursor_motion_absolute);
+	listener_unlink(&cursor_swipe_begin);
+	listener_unlink(&cursor_swipe_update);
+	listener_unlink(&cursor_swipe_end);
+	listener_unlink(&cursor_pinch_begin);
+	listener_unlink(&cursor_pinch_update);
+	listener_unlink(&cursor_pinch_end);
+	listener_unlink(&cursor_hold_begin);
+	listener_unlink(&cursor_hold_end);
 	listener_unlink(&tablet_tool_proximity);
 	listener_unlink(&tablet_tool_axis);
 	listener_unlink(&tablet_tool_button);
@@ -2690,6 +2706,21 @@ void cleanup(void) {
 
 	mango_im_relay_finish(mango_input_method_relay);
 	mango_input_method_relay = NULL;
+
+	if (hide_cursor_source) {
+		wl_event_source_remove(hide_cursor_source);
+		hide_cursor_source = NULL;
+	}
+	if (keep_idle_inhibit_source) {
+		wl_event_source_remove(keep_idle_inhibit_source);
+		keep_idle_inhibit_source = NULL;
+	}
+#ifdef XWAYLAND
+	if (sync_keymap) {
+		wl_event_source_remove(sync_keymap);
+		sync_keymap = NULL;
+	}
+#endif
 
 	/* If it's not destroyed manually it will cause a use-after-free of
 	 * wlr_seat. Destroy it until it's fixed in the wlroots side */
@@ -6639,14 +6670,14 @@ void setup(void) {
 				  &new_virtual_pointer);
 
 	pointer_gestures = wlr_pointer_gestures_v1_create(dpy);
-	LISTEN_STATIC(&cursor->events.swipe_begin, swipe_begin);
-	LISTEN_STATIC(&cursor->events.swipe_update, swipe_update);
-	LISTEN_STATIC(&cursor->events.swipe_end, swipe_end);
-	LISTEN_STATIC(&cursor->events.pinch_begin, pinch_begin);
-	LISTEN_STATIC(&cursor->events.pinch_update, pinch_update);
-	LISTEN_STATIC(&cursor->events.pinch_end, pinch_end);
-	LISTEN_STATIC(&cursor->events.hold_begin, hold_begin);
-	LISTEN_STATIC(&cursor->events.hold_end, hold_end);
+	wl_signal_add(&cursor->events.swipe_begin, &cursor_swipe_begin);
+	wl_signal_add(&cursor->events.swipe_update, &cursor_swipe_update);
+	wl_signal_add(&cursor->events.swipe_end, &cursor_swipe_end);
+	wl_signal_add(&cursor->events.pinch_begin, &cursor_pinch_begin);
+	wl_signal_add(&cursor->events.pinch_update, &cursor_pinch_update);
+	wl_signal_add(&cursor->events.pinch_end, &cursor_pinch_end);
+	wl_signal_add(&cursor->events.hold_begin, &cursor_hold_begin);
+	wl_signal_add(&cursor->events.hold_end, &cursor_hold_end);
 
 	seat = wlr_seat_create(dpy, "seat0");
 
