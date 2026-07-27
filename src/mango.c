@@ -5528,14 +5528,24 @@ void handle_iamge_copy_capture_new_session(struct wl_listener *listener,
 
 void powermgrsetmode(struct wl_listener *listener, void *data) {
 	struct wlr_output_power_v1_set_mode_event *event = data;
+	struct wlr_output_state state;
 	Monitor *m = event->output->data;
+	bool enabled = event->mode == ZWLR_OUTPUT_POWER_V1_MODE_ON;
 
 	if (!m)
 		return;
 
-	wlr_output_state_set_enabled(&m->pending, event->mode);
-	mango_output_commit(m);
-	m->only_sleep = !event->mode;
+	wlr_output_state_init(&state);
+	wlr_output_state_set_enabled(&state, enabled);
+	if (!wlr_output_commit_state(m->wlr_output, &state)) {
+		wlr_output_state_finish(&state);
+		wlr_log(WLR_ERROR, "Failed to set output power mode for %s",
+				m->wlr_output->name);
+		return;
+	}
+	wlr_output_state_finish(&state);
+
+	m->only_sleep = !enabled;
 	updatemons(NULL, NULL);
 }
 
