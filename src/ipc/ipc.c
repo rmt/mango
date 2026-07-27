@@ -283,7 +283,8 @@ void ipc_remove_watch_client(struct ipc_watch_client *wc) {
 	if (wc->type == IPC_WATCH_DEVICE)
 		ipc_device_watch_count--;
 	wl_list_remove(&wc->link);
-	wl_event_source_remove(wc->source);
+	if (wc->source)
+		wl_event_source_remove(wc->source);
 	close(wc->fd);
 	free(wc);
 }
@@ -351,7 +352,8 @@ int ipc_handle_client_data(int fd, uint32_t mask, void *data) {
 
 cleanup:
 	close(client->fd);
-	wl_event_source_remove(client->source);
+	if (client->source)
+		wl_event_source_remove(client->source);
 	free(client->buf);
 	free(client);
 	return 0;
@@ -390,6 +392,10 @@ int ipc_handle_connection(int fd, uint32_t mask, void *data) {
 	client->source = wl_event_loop_add_fd(
 		loop, client_fd, WL_EVENT_READABLE | WL_EVENT_HANGUP | WL_EVENT_ERROR,
 		ipc_handle_client_data, client);
+	if (!client->source) {
+		close(client_fd);
+		free(client);
+	}
 	return 0;
 }
 
@@ -407,6 +413,10 @@ void ipc_notify_client(Client *c) {
 					return;
 				len = strlen(raw);
 				json_str = malloc(len + 2);
+				if (!json_str) {
+					free(raw);
+					return;
+				}
 				snprintf(json_str, len + 2, "%s\n", raw);
 				free(raw);
 			}
@@ -433,6 +443,10 @@ void ipc_notify_tags(Monitor *m) {
 					return;
 				len = strlen(raw);
 				json_str = malloc(len + 2);
+				if (!json_str) {
+					free(raw);
+					return;
+				}
 				snprintf(json_str, len + 2, "%s\n", raw);
 				free(raw);
 			}
@@ -458,6 +472,10 @@ void ipc_notify_all_tags(void) {
 					return;
 				len = strlen(raw);
 				json_str = malloc(len + 2);
+				if (!json_str) {
+					free(raw);
+					return;
+				}
 				snprintf(json_str, len + 2, "%s\n", raw);
 				free(raw);
 			}
@@ -534,11 +552,18 @@ static struct wl_event_source *ipc_event_source = NULL;
 static char ipc_socket_path[256];
 
 void ipc_cleanup(void) {
-	if (ipc_event_source)
+	if (ipc_event_source) {
 		wl_event_source_remove(ipc_event_source);
-	if (ipc_socket_fd >= 0)
+		ipc_event_source = NULL;
+	}
+	if (ipc_socket_fd >= 0) {
 		close(ipc_socket_fd);
-	unlink(ipc_socket_path);
+		ipc_socket_fd = -1;
+	}
+	if (ipc_socket_path[0]) {
+		unlink(ipc_socket_path);
+		ipc_socket_path[0] = '\0';
+	}
 	unsetenv("MANGO_INSTANCE_SIGNATURE");
 
 	struct ipc_watch_client *wc, *tmp;
@@ -878,6 +903,10 @@ void handle_command(int client_fd, const char *cmd_raw) {
 		resp = build_layouts_response();
 	} else if (strncmp(cmd, "dispatch ", 9) == 0) {
 		char *dispatch_copy = strdup(cmd_raw + 9);
+		if (!dispatch_copy) {
+			send_static_json(client_fd, "{\"error\":\"out of memory\"}\n");
+			return;
+		}
 		char *out = dispatch_copy, *ptr = dispatch_copy;
 		int client_id = -1;
 		bool field_start = true;
@@ -1018,6 +1047,8 @@ bool handle_watch_command(int fd, const char *cmd,
 		return false;
 
 	struct ipc_watch_client *wc = calloc(1, sizeof(*wc));
+	if (!wc)
+		return false;
 	wc->fd = fd;
 	wc->type = type;
 
@@ -1032,9 +1063,14 @@ bool handle_watch_command(int fd, const char *cmd,
 		wc->target.client.id = client_id;
 
 	wl_event_source_remove(client->source);
+	client->source = NULL;
 	wc->source = wl_event_loop_add_fd(
 		client->loop, fd, WL_EVENT_READABLE | WL_EVENT_HANGUP | WL_EVENT_ERROR,
 		ipc_watch_data_handler, wc);
+	if (!wc->source) {
+		free(wc);
+		return false;
+	}
 	wl_list_insert(&ipc_watch_clients, &wc->link);
 	if (type == IPC_WATCH_DEVICE)
 		ipc_device_watch_count++;
@@ -1153,6 +1189,10 @@ void ipc_notify_monitor(Monitor *m) {
 					return;
 				len = strlen(raw);
 				json_str = malloc(len + 2);
+				if (!json_str) {
+					free(raw);
+					return;
+				}
 				snprintf(json_str, len + 2, "%s\n", raw);
 				free(raw);
 			}
@@ -1195,6 +1235,10 @@ void ipc_notify_last_surface_ws_name(Monitor *m) {
 				return;
 			len = strlen(raw);
 			json_str = malloc(len + 2);
+			if (!json_str) {
+				free(raw);
+				return;
+			}
 			snprintf(json_str, len + 2, "%s\n", raw);
 			free(raw);
 		}
@@ -1226,6 +1270,10 @@ void ipc_notify_focusing_client(void) {
 					return;
 				len = strlen(raw);
 				json_str = malloc(len + 2);
+				if (!json_str) {
+					free(raw);
+					return;
+				}
 				snprintf(json_str, len + 2, "%s\n", raw);
 				free(raw);
 			}
@@ -1255,6 +1303,10 @@ void ipc_notify_all_monitors(void) {
 					return;
 				len = strlen(raw);
 				json_str = malloc(len + 2);
+				if (!json_str) {
+					free(raw);
+					return;
+				}
 				snprintf(json_str, len + 2, "%s\n", raw);
 				free(raw);
 			}
@@ -1282,6 +1334,10 @@ void ipc_notify_all_clients(void) {
 					return;
 				len = strlen(raw);
 				json_str = malloc(len + 2);
+				if (!json_str) {
+					free(raw);
+					return;
+				}
 				snprintf(json_str, len + 2, "%s\n", raw);
 				free(raw);
 			}
@@ -1308,6 +1364,10 @@ void ipc_notify_keymode(void) {
 					return;
 				len = strlen(raw);
 				json_str = malloc(len + 2);
+				if (!json_str) {
+					free(raw);
+					return;
+				}
 				snprintf(json_str, len + 2, "%s\n", raw);
 				free(raw);
 			}
@@ -1334,6 +1394,10 @@ void ipc_notify_kb_layout(void) {
 					return;
 				len = strlen(raw);
 				json_str = malloc(len + 2);
+				if (!json_str) {
+					free(raw);
+					return;
+				}
 				snprintf(json_str, len + 2, "%s\n", raw);
 				free(raw);
 			}
@@ -1348,53 +1412,84 @@ void ipc_notify_kb_layout(void) {
 /* ---------- Init & cleanup ---------- */
 
 void ipc_init(struct wl_event_loop *loop) {
+	bool socket_bound = false;
+	bool signature_set = false;
 	wl_list_init(&ipc_watch_clients);
 
 	const char *xdg_runtime = getenv("XDG_RUNTIME_DIR");
 	if (!xdg_runtime)
 		return;
 
-	snprintf(ipc_socket_path, sizeof(ipc_socket_path), "%s/mango-%d.sock",
-			 xdg_runtime, getpid());
+	int path_len = snprintf(ipc_socket_path, sizeof(ipc_socket_path),
+							"%s/mango-%d.sock", xdg_runtime, getpid());
+	if (path_len < 0 || (size_t)path_len >= sizeof(ipc_socket_path)) {
+		mango_error(true, WLR_ERROR, "IPC socket path is too long");
+		ipc_socket_path[0] = '\0';
+		return;
+	}
 
 	ipc_socket_fd = socket(AF_UNIX, SOCK_STREAM, 0);
 	if (ipc_socket_fd < 0)
-		return;
+		goto fail;
 
 	int flags = fcntl(ipc_socket_fd, F_GETFD, 0);
 	if (flags == -1 ||
 		fcntl(ipc_socket_fd, F_SETFD, flags | FD_CLOEXEC) == -1) {
 		mango_error(true, WLR_ERROR, "failed to set FD_CLOEXEC on IPC socket");
-		close(ipc_socket_fd);
-		return;
+		goto fail;
 	}
-	// Sets O_NONBLOCK
+
 	flags = fcntl(ipc_socket_fd, F_GETFL, 0);
 	if (flags == -1 ||
 		fcntl(ipc_socket_fd, F_SETFL, flags | O_NONBLOCK) == -1) {
 		mango_error(true, WLR_ERROR, "failed to set O_NONBLOCK on IPC socket");
-		close(ipc_socket_fd);
-		return;
+		goto fail;
 	}
 
 	struct sockaddr_un addr = {.sun_family = AF_UNIX};
-	int len =
+	path_len =
 		snprintf(addr.sun_path, sizeof(addr.sun_path), "%s", ipc_socket_path);
-	if (len < 0 || (size_t)len >= sizeof(addr.sun_path)) {
-		wlr_log(WLR_ERROR, "IPC socket path too long for sun_path");
-		close(ipc_socket_fd);
-		return;
+	if (path_len < 0 || (size_t)path_len >= sizeof(addr.sun_path)) {
+		mango_error(true, WLR_ERROR, "IPC socket path too long for sun_path");
+		goto fail;
 	}
 
 	unlink(ipc_socket_path);
 	if (bind(ipc_socket_fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
-		close(ipc_socket_fd);
-		return;
+		mango_error(true, WLR_ERROR, "failed to bind IPC socket: %s",
+					strerror(errno));
+		goto fail;
 	}
-	listen(ipc_socket_fd, 16);
+	socket_bound = true;
 
-	setenv("MANGO_INSTANCE_SIGNATURE", ipc_socket_path, 1);
+	if (listen(ipc_socket_fd, 16) < 0) {
+		mango_error(true, WLR_ERROR, "failed to listen on IPC socket: %s",
+					strerror(errno));
+		goto fail;
+	}
+
+	if (setenv("MANGO_INSTANCE_SIGNATURE", ipc_socket_path, 1) < 0) {
+		mango_error(true, WLR_ERROR, "failed to export IPC socket path: %s",
+					strerror(errno));
+		goto fail;
+	}
+	signature_set = true;
 
 	ipc_event_source = wl_event_loop_add_fd(
 		loop, ipc_socket_fd, WL_EVENT_READABLE, ipc_handle_connection, loop);
+	if (ipc_event_source)
+		return;
+
+	mango_error(true, WLR_ERROR, "failed to create IPC event source");
+
+fail:
+	if (signature_set)
+		unsetenv("MANGO_INSTANCE_SIGNATURE");
+	if (ipc_socket_fd >= 0) {
+		close(ipc_socket_fd);
+		ipc_socket_fd = -1;
+	}
+	if (socket_bound)
+		unlink(ipc_socket_path);
+	ipc_socket_path[0] = '\0';
 }
