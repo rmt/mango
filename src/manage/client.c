@@ -3222,6 +3222,12 @@ void client_apply_fullscreen(
 	client_pending_fullscreen_state(c, fullscreen);
 
 	if (fullscreen) {
+		/* A map/tag-switch race can leave a visible fullscreen client with
+		 * disabled scene nodes. Restore both before resizing it. */
+		if (c->scene && c->scene_surface && VISIBLEON(c, c->mon)) {
+			wlr_scene_node_set_enabled(&c->scene->node, true);
+			wlr_scene_node_set_enabled(&c->scene_surface->node, true);
+		}
 
 		if (c->ismaximizescreen && !c->force_fakemaximize) {
 			client_set_maximized(c, false);
