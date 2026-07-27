@@ -2689,6 +2689,7 @@ void cleanup(void) {
 	destroykeyboardgroup(&kb_group->destroy, NULL);
 
 	mango_im_relay_finish(mango_input_method_relay);
+	mango_input_method_relay = NULL;
 
 	/* If it's not destroyed manually it will cause a use-after-free of
 	 * wlr_seat. Destroy it until it's fixed in the wlroots side */
