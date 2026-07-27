@@ -1284,7 +1284,7 @@ void show_scratchpad(Client *c) {
 }
 
 void client_update_oldmonname_record(Client *c, Monitor *m) {
-	if (!c || c->iskilling || !client_surface(c)->mapped)
+	if (!c || c->iskilling || !client_surface_mapped(c))
 		return;
 	memset(c->oldmonname, 0, sizeof(c->oldmonname));
 	strncpy(c->oldmonname, m->wlr_output->name, sizeof(c->oldmonname) - 1);
@@ -1920,7 +1920,7 @@ void apply_window_snap(Client *c) {
 	ch = c->geom.height - 2 * cbw;
 
 	Client *tc = NULL;
-	if (!c || !c->mon || !client_surface(c)->mapped || c->iskilling)
+	if (!c || !c->mon || !client_surface_mapped(c) || c->iskilling)
 		return;
 
 	if (!c->isfloating || !config.enable_floating_snap)
@@ -1928,7 +1928,7 @@ void apply_window_snap(Client *c) {
 
 	wl_list_for_each(tc, &clients, link) {
 		if (tc && tc->isfloating && !tc->iskilling &&
-			client_surface(tc)->mapped && VISIBLEON(tc, c->mon)) {
+			client_surface_mapped(tc) && VISIBLEON(tc, c->mon)) {
 
 			tcbw = !render_border || tc->fake_no_border ? config.borderpx : 0;
 			tcx = tc->geom.x + tcbw;
@@ -4041,7 +4041,7 @@ void focusclient(Client *c, int32_t lift) {
 	if (c && c->iskilling)
 		return;
 
-	if (c && !client_surface(c)->mapped)
+	if (c && !client_surface_mapped(c))
 		return;
 
 	if (c && client_should_ignore_focus(c) && client_is_x11_popup(c))
@@ -4150,7 +4150,7 @@ void focusclient(Client *c, int32_t lift) {
 
 		if (selmon && selmon->sel &&
 			(!VISIBLEON(selmon->sel, selmon) || selmon->sel->iskilling ||
-			 !client_surface(selmon->sel)->mapped))
+			 !client_surface_mapped(selmon->sel)))
 			selmon->sel = NULL;
 
 		// clear text input focus state
@@ -4726,17 +4726,21 @@ mapnotify(struct wl_listener *listener, void *data) {
 	/* Called when the surface is mapped, or ready to display on-screen. */
 	Client *at_client = NULL;
 	Client *c = wl_container_of(listener, c, map);
+	struct wlr_surface *surface = client_surface(c);
 	int32_t i = 0;
+
+	if (!surface)
+		return;
 
 	c->id = generate_client_id();
 
 	/* Create scene tree for this client and its border */
-	c->scene = client_surface(c)->data = wlr_scene_tree_create(layers[LyrTile]);
+	c->scene = surface->data = wlr_scene_tree_create(layers[LyrTile]);
 	wlr_scene_node_set_enabled(&c->scene->node, c->type != XDGShell);
 	c->scene_surface =
 		c->type == XDGShell
 			? wlr_scene_xdg_surface_create(c->scene, c->surface.xdg)
-			: wlr_scene_subsurface_tree_create(c->scene, client_surface(c));
+			: wlr_scene_subsurface_tree_create(c->scene, surface);
 	c->scene->node.data = c->scene_surface->node.data = c;
 
 	client_get_geometry(c, &c->geom);
@@ -5723,7 +5727,7 @@ setfloating(Client *c, int32_t floating) {
 	c->isfloating = floating;
 	bool window_size_outofrange = false;
 
-	if (!c || !c->mon || !client_surface(c)->mapped || c->iskilling)
+	if (!c || !c->mon || !client_surface_mapped(c) || c->iskilling)
 		return;
 
 	target_box = c->geom;
@@ -5842,7 +5846,7 @@ void exit_scroller_stack(Client *c) {
 
 void setmaximizescreen(Client *c, int32_t maximizescreen, bool rearrange) {
 	struct wlr_box maximizescreen_box;
-	if (!c || !c->mon || !client_surface(c)->mapped || c->iskilling ||
+	if (!c || !c->mon || !client_surface_mapped(c) || c->iskilling ||
 		c == grabc)
 		return;
 
@@ -5906,7 +5910,7 @@ void setfullscreen(Client *c, int32_t fullscreen,
 				   bool rearrange) // 用自定义全屏代理自带全屏
 {
 
-	if (!c || !c->mon || !client_surface(c)->mapped || c->iskilling ||
+	if (!c || !c->mon || !client_surface_mapped(c) || c->iskilling ||
 		c == grabc)
 		return;
 
@@ -7090,7 +7094,7 @@ void updatemons(struct wl_listener *listener, void *data) {
 			}
 
 			// restore window to old monitor
-			if (c->mon && c->mon != m && client_surface(c)->mapped &&
+			if (c->mon && c->mon != m && client_surface_mapped(c) &&
 				strcmp(c->oldmonname, m->wlr_output->name) == 0) {
 				client_change_mon(c, m);
 			}
@@ -7131,7 +7135,7 @@ void updatemons(struct wl_listener *listener, void *data) {
 
 	if (selmon && selmon->wlr_output->enabled) {
 		wl_list_for_each(c, &clients, link) {
-			if (!c->mon && client_surface(c)->mapped) {
+			if (!c->mon && client_surface_mapped(c)) {
 				c->mon = selmon;
 				reset_foreign_tolevel(c, NULL, c->mon);
 			}
@@ -7197,7 +7201,7 @@ urgent(struct wl_listener *listener, void *data) {
 		focusclient(c, 1);
 	} else if (c != focustop(selmon)) {
 		c->isurgent = 1;
-		if (client_surface(c)->mapped)
+		if (client_surface_mapped(c))
 			setborder_color(c);
 		printstatus(IPC_WATCH_ARRANGGE);
 	}
@@ -7422,7 +7426,7 @@ void activatex11(struct wl_listener *listener, void *data) {
 		need_arrange = true;
 	} else if (c != focustop(selmon)) {
 		c->isurgent = 1;
-		if (client_surface(c)->mapped)
+		if (client_surface_mapped(c))
 			setborder_color(c);
 	}
 
@@ -7443,7 +7447,7 @@ void configurex11(struct wl_listener *listener, void *data) {
 	new_geo.height = event->height;
 	fix_xwayland_coordinate(&new_geo);
 
-	if (!client_surface(c) || !client_surface(c)->mapped) {
+	if (!client_surface(c) || !client_surface_mapped(c)) {
 
 		wlr_xwayland_surface_configure(c->surface.xwayland, new_geo.x,
 									   new_geo.y, new_geo.width,
@@ -7516,10 +7520,13 @@ void commitx11(struct wl_listener *listener, void *data) {
 
 void associatex11(struct wl_listener *listener, void *data) {
 	Client *c = wl_container_of(listener, c, associate);
+	struct wlr_surface *surface = client_surface(c);
 
-	LISTEN(&client_surface(c)->events.map, &c->map, mapnotify);
-	LISTEN(&client_surface(c)->events.unmap, &c->unmap, unmapnotify);
-	LISTEN(&client_surface(c)->events.commit, &c->commmitx11, commitx11);
+	if (!surface)
+		return;
+	LISTEN(&surface->events.map, &c->map, mapnotify);
+	LISTEN(&surface->events.unmap, &c->unmap, unmapnotify);
+	LISTEN(&surface->events.commit, &c->commmitx11, commitx11);
 }
 
 void dissociatex11(struct wl_listener *listener, void *data) {

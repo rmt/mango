@@ -282,7 +282,7 @@ void focuslast(const Arg *arg) {
 
 	wl_list_for_each(c, &fstack, flink) {
 		if (c->iskilling || c->isminimized || c->isunglobal ||
-			!client_surface(c)->mapped || client_is_unmanaged(c) ||
+			!client_surface_mapped(c) || client_is_unmanaged(c) ||
 			client_is_x11_popup(c))
 			continue;
 
@@ -302,7 +302,7 @@ void focuslast(const Arg *arg) {
 		}
 	}
 
-	if (!tc || !client_surface(tc)->mapped)
+	if (!tc || !client_surface_mapped(tc))
 		return;
 
 	if ((int32_t)tc->tags > 0) {
@@ -1930,7 +1930,7 @@ void toggleoverview(const Arg *arg) {
 		wl_list_for_each(c, &clients, link) {
 			if (c && c->mon == selmon && !client_is_unmanaged(c) &&
 				!client_is_x11_popup(c) && !c->isunglobal && !c->isminimized &&
-				client_surface(c)->mapped) {
+				client_surface_mapped(c)) {
 				c->animation.overining = true;
 				overview_backup(c);
 			}
@@ -1941,7 +1941,7 @@ void toggleoverview(const Arg *arg) {
 		wl_list_for_each(c, &clients, link) {
 			if (c && c->mon == selmon && !c->iskilling &&
 				!client_is_unmanaged(c) && !c->isunglobal && !c->isminimized &&
-				!client_is_x11_popup(c) && client_surface(c)->mapped) {
+				!client_is_x11_popup(c) && client_surface_mapped(c)) {
 				overview_restore(c, &(Arg){.ui = target});
 			}
 		}

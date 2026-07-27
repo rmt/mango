@@ -311,7 +311,7 @@ void buffer_set_effect(Client *c, BufferData data) {
 }
 
 void client_draw_shadow(Client *c, struct ivec2 offsets) {
-	if (c->iskilling || !client_surface(c)->mapped || c->isnoshadow)
+	if (c->iskilling || !client_surface_mapped(c) || c->isnoshadow)
 		return;
 
 	if (!config.shadows || c->isfullscreen ||
@@ -566,7 +566,7 @@ void global_draw_group_bar(Client *c, int32_t x, int32_t y, int32_t width,
 
 void client_draw_split_border(Client *c, bool hit_no_border,
 							  struct ivec2 offsets) {
-	if (c->iskilling || !c->mon || !client_surface(c)->mapped)
+	if (c->iskilling || !c->mon || !client_surface_mapped(c))
 		return;
 
 	const Layout *layout = c->mon->pertag->ltidxs[c->mon->pertag->curtag];
@@ -633,7 +633,7 @@ void client_draw_split_border(Client *c, bool hit_no_border,
 }
 
 void client_draw_border(Client *c, struct ivec2 offsets) {
-	if (!c || c->iskilling || !client_surface(c)->mapped)
+	if (!c || c->iskilling || !client_surface_mapped(c))
 		return;
 
 	if (c->isfullscreen) {
@@ -940,7 +940,7 @@ void client_set_drop_area(Client *c) {
 /* ---------- central rendering entry point ---------- */
 
 void client_apply_clip(Client *c, float factor) {
-	if (c->iskilling || !client_surface(c)->mapped)
+	if (c->iskilling || !client_surface_mapped(c))
 		return;
 
 	struct ivec2 offsets = compute_edge_offsets(c);
@@ -1318,7 +1318,7 @@ void client_set_pending_state(Client *c) {
 }
 
 void resize(Client *c, struct wlr_box geo, int32_t interact) {
-	if (!c || !c->mon || !client_surface(c)->mapped)
+	if (!c || !c->mon || !client_surface_mapped(c))
 		return;
 
 	if (!c->mon)
@@ -1593,7 +1593,7 @@ bool client_draw_frame(Client *c) {
 
 	bool need_next_tick = false;
 
-	if (!c || !client_surface(c)->mapped)
+	if (!c || !client_surface_mapped(c))
 		return false;
 
 	if (!c->need_output_flush)
