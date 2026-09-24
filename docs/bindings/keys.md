@@ -122,6 +122,7 @@ bindr=Super,Super_L,spawn,rofi -show run
 | `focusstack` | `next/prev` | Cycle focus within the stack. |
 | `overcircle` | `next/prev/current_next/current_prev` | Open overview when closed; while it is open, cycle focus to the next/previous window on the current monitor. `current_next`/`current_prev` only show the current tagset's windows in the overview instead of all tags. |
 | `focuslast` | - | Focus the previously active window. |
+| `focuszone` | `zone\|zone...` | Focus or cycle windows assigned to one or more configured zones, for example `left\|right`. |
 | `switcher` | `next/prev`, `all_tag_next/all_tag_prev`, `all_next/all_prev` | Open or cycle the thumbnail switcher. `next`/`prev` list the current tag's windows, `all_tag_next`/`all_tag_prev` list all tags on the current monitor, `all_next`/`all_prev` list all monitors and tags. Releasing any modifier key selects. |
 | `exchange_client` | `left/right/up/down` | Swap the focused window with its neighbor in direction. Both windows change place, and with `exchange_cross_monitor` enabled they also swap monitors. |
 | `exchange_stack_client` | `next/prev` | Exchange window position in stack. |
@@ -171,6 +172,7 @@ It is formed by tag numbers `1`–`9`, optionally combined with `|`.
 | :--- | :--- | :--- |
 | `setlayout` | `name` | Switch to layout (e.g., `scroller`, `tile`). |
 | `switch_layout` | - | Cycle through available layouts. |
+| `movetozone` | `zone` | Assign a window to a configured zone such as `left` or `right`. |
 | `incnmaster` | `+1/-1` | Increase/Decrease number of master windows. |
 | `setmfact` | `+0.05` | Increase/Decrease master area size. |
 | `set_proportion` | `float` | Set scroller window proportion (0.0–1.0). |

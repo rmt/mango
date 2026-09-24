@@ -197,6 +197,11 @@ typedef struct {
 	int32_t no_hide;
 } ConfigTagRule;
 
+typedef struct ConfigZone {
+	char *name;
+	double x, y, w, h;
+} ConfigZone;
+
 typedef struct {
 	char *layer_name; // Layout name
 	char *animation_type_open;
@@ -352,6 +357,9 @@ typedef struct {
 
 	char **circle_layout;
 	int32_t circle_layout_count;
+	ConfigZone *zones;
+	int32_t zones_count;
+	char *defaultzone;
 
 	uint32_t new_is_master;
 	float default_mfact;

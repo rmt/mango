@@ -182,6 +182,8 @@ struct Client {
 	Client *swallowdby, *swallowing;
 	bool is_clip_to_hide;
 	bool drag_to_tile;
+	bool drag_to_zone;
+	bool drag_was_tiled;
 	bool scratchpad_switching_mon;
 	bool scratchpad_tag_hidden;
 	bool fake_no_border;
@@ -217,6 +219,7 @@ struct Client {
 	float grid_row_per;
 	float old_grid_col_per;
 	float old_grid_row_per;
+	char *zone_name;
 	int32_t grid_col_idx;
 	int32_t grid_row_idx;
 	uint32_t id;

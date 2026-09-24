@@ -252,6 +252,8 @@ void cleanup(void) {
 	wl_display_destroy(server.display);
 	/* Destroy after the wayland display (when the monitors are already
 	   destroyed) to avoid destroying them with an invalid scene output. */
+	server.dropzone = NULL;
+	server.zone_droparea = NULL;
 	wlr_scene_node_destroy(&server.scene->tree.node);
 
 	mango_text_global_finish();
@@ -653,6 +655,12 @@ void setup(void) {
 		server.layers[LyrBlock], server.scene_geometry.width,
 		server.scene_geometry.height, (float[4]){0.1, 0.1, 0.1, 1.0});
 	wlr_scene_node_set_enabled(&server.locked_bg->node, false);
+	server.zone_droparea = wlr_scene_rect_create(server.layers[LyrOverlay], 0,
+										 0, config.dropcolor);
+	if (server.zone_droparea) {
+		wlr_scene_node_set_enabled(&server.zone_droparea->node, false);
+		wlr_scene_node_lower_to_bottom(&server.zone_droparea->node);
+	}
 
 	/* Use decoration protocols to negotiate server-side decorations */
 	wlr_server_decoration_manager_set_default_mode(

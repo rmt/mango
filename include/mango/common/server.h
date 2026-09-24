@@ -83,6 +83,8 @@ struct MangoServer {
 	struct wlr_scene_rect *root_bg;
 	struct wlr_session_lock_manager_v1 *session_lock_manager;
 	struct wlr_scene_rect *locked_bg;
+	struct wlr_scene_rect *zone_droparea;
+	const struct ConfigZone *dropzone;
 	struct wlr_session_lock_v1 *current_lock;
 	struct wlr_scene_tree *drag_icon;
 	struct wlr_cursor_shape_manager_v1 *cursor_shape_manager;

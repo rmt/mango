@@ -8,6 +8,7 @@
 #include "mango/layout/layout.h"
 #include "mango/layout/scroll.h"
 #include "mango/layout/vertical.h"
+#include "mango/layout/zones.h"
 #include "mango/manage/client.h"
 #include "mango/manage/misc.h"
 #include "mango/manage/monitor.h"
@@ -1408,6 +1409,7 @@ Layout layouts[] = {
 	{"DW", dwindle, "dwindle", DWINDLE},
 	{"F", fair, "fair", FAIR},
 	{"VF", vertical_fair, "vertical_fair", VERTICAL_FAIR},
+	{"Z", zones, "zones", ZONES},
 };
 
 bool special_handle_empty_view(Monitor *m, bool from_view) {
