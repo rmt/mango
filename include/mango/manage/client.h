@@ -267,6 +267,7 @@ int32_t client_get_pid(Client *c);
 void client_get_clip(Client *c, struct wlr_box *clip);
 void client_get_geometry(Client *c, struct wlr_box *geom);
 Client *client_get_parent(Client *c);
+bool client_should_preserve_requested_position(Client *c);
 int32_t client_has_children(Client *c);
 const char *client_get_title(Client *c);
 int32_t client_is_float_type(Client *c);
@@ -301,6 +302,7 @@ void client_set_tiled(Client *c, uint32_t edges);
 
 int32_t client_should_ignore_focus(Client *c);
 int32_t client_is_x11_popup(Client *c);
+bool client_should_show_in_taskbar(Client *c);
 int32_t client_should_global(Client *c);
 int32_t client_should_overtop(Client *c);
 int32_t client_wants_focus(Client *c);

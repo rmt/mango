@@ -53,7 +53,8 @@ void handle_xdg_activation_request_activate(struct wl_listener *listener,
 	Client *c = NULL;
 	toplevel_from_wlr_surface(event->surface, &c, NULL);
 
-	if (!c || !c->foreign_toplevel)
+	if (!c || !c->mon || !client_surface_mapped(c) ||
+		client_is_parked(c) || client_is_unmanaged(c))
 		return;
 
 	/* activation_bypass skips auth and goes straight to the normal path */

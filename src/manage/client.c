@@ -262,6 +262,24 @@ Client *client_get_parent(Client *c) {
 			c->surface.xdg->toplevel->parent->base->surface, &p, NULL);
 	return p;
 }
+static bool client_is_x11_fixed_size(Client *c) {
+#ifdef XWAYLAND
+	if (client_is_x11(c) && c->surface.xwayland &&
+		c->surface.xwayland->size_hints) {
+		xcb_size_hints_t *hints = c->surface.xwayland->size_hints;
+		return hints->min_width > 0 && hints->min_height > 0 &&
+			   (hints->max_width == hints->min_width ||
+				hints->max_height == hints->min_height);
+	}
+#endif
+	return false;
+}
+
+bool client_should_preserve_requested_position(Client *c) {
+	/* Ordinary XDG and unparented, resizable X11 windows keep zone behavior. */
+	return client_is_x11(c) &&
+		   (client_get_parent(c) || client_is_x11_fixed_size(c));
+}
 int32_t client_has_children(Client *c) {
 #ifdef XWAYLAND
 	if (client_is_x11(c))
@@ -319,9 +337,7 @@ int32_t client_is_float_type(Client *c) {
 			return 1;
 		}
 
-		return size_hints->min_width > 0 && size_hints->min_height > 0 &&
-			   (size_hints->max_width == size_hints->min_width ||
-				size_hints->max_height == size_hints->min_height);
+		return client_is_x11_fixed_size(c);
 	}
 #endif
 
@@ -671,6 +687,17 @@ int32_t client_is_x11_popup(Client *c) {
 	}
 #endif
 	return 0;
+}
+
+bool client_should_show_in_taskbar(Client *c) {
+	if (!client_is_x11(c))
+		return true;
+
+	/* Some clients implement menus or decorations as ordinary fixed-size X11
+	 * toplevels without ICCCM input hints. Exclude those and explicit popups
+	 * from taskbars, while retaining fixed-size input-capable windows. */
+	return !client_is_x11_popup(c) &&
+		   !(client_is_x11_fixed_size(c) && client_should_ignore_focus(c));
 }
 
 int32_t client_should_global(Client *c) {
@@ -1421,13 +1448,13 @@ void apply_rule_properties(Client *c, const ConfigWinRule *r) {
 void set_float_malposition(Client *tc) {
 	Client *c = NULL;
 	int32_t x, y, offset, xreverse, yreverse;
+	if (!tc || !tc->mon || client_should_preserve_requested_position(tc))
+		return;
+
 	x = tc->geom.x;
 	y = tc->geom.y;
 	xreverse = 1;
 	yreverse = 1;
-
-	if (!tc || !tc->mon)
-		return;
 
 	offset = MANGO_MIN(tc->mon->w.width / 20, tc->mon->w.height / 20);
 
@@ -1595,9 +1622,10 @@ void client_apply_rules(Client *c) {
 		set_size_per(mon, c);
 
 	// if no geom rule hit and is normal winodw, use the center pos and record
-	// the hit size
+	// the hit size. Preserve a transient X11 window's requested position.
 	if (!c->iscustompos &&
-		(!client_is_x11(c) || (c->geom.x == 0 && c->geom.y == 0))) {
+		(!client_is_x11(c) ||
+		 (!parent && c->geom.x == 0 && c->geom.y == 0))) {
 		struct wlr_box pending_center_geom =
 			c->iscustomsize ? c->float_geom : c->geom;
 		c->float_geom = c->geom =
@@ -1809,7 +1837,7 @@ void client_update_geometry(Client *c) {
 		 * sizes are returned. */
 		xwayland_apply_scale(c);
 		client_get_geometry(c, &c->geom);
-		if (c->isfloating) {
+		if (c->isfloating && !client_get_parent(c)) {
 			fix_xwayland_coordinate(&c->geom);
 			c->float_geom = c->geom;
 		}
@@ -1851,7 +1879,8 @@ bool client_init_unmanaged(Client *c) {
 		/* After applying the scale, recompute c->geom (logical size). */
 		client_get_geometry(c, &c->geom);
 		struct wlr_box geo = c->geom;
-		fix_xwayland_coordinate(&geo);
+		if (!client_get_parent(c))
+			fix_xwayland_coordinate(&geo);
 		struct wlr_box xgeo = geo;
 		xwayland_logical_to_x11(&xgeo, c->xwayland_scale);
 		wlr_scene_node_set_position(&c->scene->node, geo.x, geo.y);
@@ -2097,7 +2126,9 @@ void handle_client_map(struct wl_listener *listener, void *data) {
 		init_client_properties(c);
 
 	// set special window properties
-	if (client_is_unmanaged(c) || client_is_x11_popup(c)) {
+	/* Avoid configure loops caused by borders on fixed-size X11 clients. */
+	if (client_is_unmanaged(c) || client_is_x11_popup(c) ||
+		client_is_x11_fixed_size(c)) {
 		c->bw = 0;
 		c->isnoborder = 1;
 	} else {
@@ -2624,7 +2655,9 @@ void handle_client_activation_request(struct wl_listener *listener,
 	Client *c = NULL;
 	toplevel_from_wlr_surface(event->surface, &c, NULL);
 
-	if (!c || !c->foreign_toplevel)
+	/* A managed popup need not have a taskbar handle to request activation. */
+	if (!c || !c->mon || !client_surface_mapped(c) ||
+		client_is_parked(c) || client_is_unmanaged(c))
 		return;
 
 	if (config.focus_on_activate && !c->istagsilent &&
@@ -3062,7 +3095,10 @@ void client_set_monitor(Client *c, Monitor *m, uint32_t newtags, bool focus) {
 		reset_foreign_tolevel(c, oldmon, m);
 		resize(c, c->geom, 0);
 		client_reset_mon_tags(c, m, newtags);
-		if (!zones_client_has_valid_zone(c) && c->tags &&
+		/* Keep parented and fixed-size X11 windows at their requested positions. */
+		if (!client_should_preserve_requested_position(c) &&
+			!zones_client_has_valid_zone(c) &&
+			c->tags &&
 			m->pertag->ltidxs[get_client_tag_idx(c)]->id == ZONES) {
 			const ConfigZone *zone = zones_default_for_monitor(m);
 			if (zone) zones_set_client_zone(c, zone);
@@ -3181,8 +3217,10 @@ void client_set_floating(Client *c, int32_t floating) {
 			resize(c, target_box, 0);
 		}
 
+		/* Preserve client placement for transients and fixed-size X11 windows. */
 		const Layout *layout = c->mon->pertag->ltidxs[get_mon_curtag(c->mon)];
-		if (layout && layout->id == ZONES) {
+		if (layout && layout->id == ZONES &&
+			!client_should_preserve_requested_position(c)) {
 			const ConfigZone *zone = zones_client_has_valid_zone(c)
 				? zones_find(c->zone_name) : zones_default_for_monitor(c->mon);
 			if (zone && zones_set_client_zone(c, zone)) {
@@ -4292,7 +4330,8 @@ void handle_xwayland_surface_request_activate(struct wl_listener *listener,
 	bool need_arrange = false;
 
 	if (server.session_locked || !c || !xsurface || c->iskilling || !c->mon ||
-		!c->foreign_toplevel || client_is_unmanaged(c))
+		!client_surface_mapped(c) || client_is_parked(c) ||
+		client_is_unmanaged(c))
 		return;
 
 	if (c->swallowdby)
@@ -4348,7 +4387,8 @@ void handle_xwayland_surface_request_configure(struct wl_listener *listener,
 	/* event is in X11 physical sizes; convert back to Wayland logical
 	 * coordinates. */
 	xwayland_x11_to_logical(&new_geo, c->xwayland_scale);
-	fix_xwayland_coordinate(&new_geo);
+	if (!client_get_parent(c))
+		fix_xwayland_coordinate(&new_geo);
 
 	if (!surface || !surface->mapped) {
 		struct wlr_box xgeo = new_geo;
@@ -4381,7 +4421,8 @@ void handle_xwayland_surface_request_configure(struct wl_listener *listener,
 		new_geo.y = new_geo.y - c->bw;
 		new_geo.width = new_geo.width + c->bw * 2;
 		new_geo.height = new_geo.height + c->bw * 2;
-		fix_xwayland_coordinate(&new_geo);
+		if (!client_get_parent(c))
+			fix_xwayland_coordinate(&new_geo);
 
 		resize(c,
 			   (struct wlr_box){.x = new_geo.x,

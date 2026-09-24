@@ -86,7 +86,8 @@ void handle_foreign_destroy(struct wl_listener *listener, void *data) {
 	c->foreign_toplevel = NULL;
 }
 void add_foreign_toplevel(Client *c) {
-	if (!c || !c->mon || !c->mon->wlr_output || !c->mon->wlr_output->enabled)
+	if (!c || !client_should_show_in_taskbar(c) || !c->mon ||
+		!c->mon->wlr_output || !c->mon->wlr_output->enabled)
 		return;
 
 	c->foreign_toplevel =
