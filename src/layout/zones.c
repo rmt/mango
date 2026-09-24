@@ -295,6 +295,7 @@ void zones_realign_visible_floating(Monitor *m) {
 
 	wl_list_for_each(c, &server.clients, link) {
 		if (!VISIBLEON(c, m) || !c->isfloating || c->iskilling ||
+			c->isfullscreen || c->ismaximizescreen ||
 			!zones_client_has_valid_zone(c))
 			continue;
 

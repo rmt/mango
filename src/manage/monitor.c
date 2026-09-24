@@ -17,6 +17,7 @@
 #include "mango/layout/dwindle.h"
 #include "mango/layout/layout.h"
 #include "mango/layout/scroll.h"
+#include "mango/layout/zones.h"
 #include "mango/manage/client.h"
 #include "mango/manage/layer.h"
 #include "mango/manage/misc.h"
@@ -40,6 +41,64 @@
 #include <wlr/types/wlr_session_lock_v1.h>
 #include <wlr/types/wlr_single_pixel_buffer_v1.h>
 #include <wlr/types/wlr_switch.h>
+
+#define SAVED_MONITOR_STATE_COUNT 16
+typedef struct {
+	char name[128];
+	uint32_t seltags;
+	uint32_t tagset[2];
+	uint32_t curtag, prevtag;
+	bool valid;
+} SavedMonitorState;
+
+static SavedMonitorState saved_monitor_states[SAVED_MONITOR_STATE_COUNT];
+
+static SavedMonitorState *monitor_saved_state(Monitor *m, bool create) {
+	if (!m || !m->wlr_output || !m->wlr_output->name)
+		return NULL;
+	SavedMonitorState *empty = NULL;
+	for (size_t i = 0; i < LENGTH(saved_monitor_states); i++) {
+		SavedMonitorState *s = &saved_monitor_states[i];
+		if (!s->valid) {
+			if (!empty)
+				empty = s;
+			continue;
+		}
+		if (strcmp(s->name, m->wlr_output->name) == 0)
+			return s;
+	}
+	if (!create || !empty)
+		return NULL;
+	snprintf(empty->name, sizeof(empty->name), "%s", m->wlr_output->name);
+	empty->valid = true;
+	return empty;
+}
+
+static void save_monitor_tag_state(Monitor *m) {
+	SavedMonitorState *s = monitor_saved_state(m, true);
+	if (!s || !m->pertag)
+		return;
+	s->seltags = m->seltags;
+	s->tagset[0] = m->tagset[0];
+	s->tagset[1] = m->tagset[1];
+	s->curtag = m->pertag->curtag;
+	s->prevtag = m->pertag->prevtag;
+}
+
+static bool restore_monitor_tag_state(Monitor *m) {
+	SavedMonitorState *s = monitor_saved_state(m, false);
+	if (!s || !m->pertag || s->seltags > 1 ||
+		!(s->tagset[s->seltags] & TAGMASK) ||
+		s->curtag > (uint32_t)config.tag_num ||
+		s->prevtag > (uint32_t)config.tag_num)
+		return false;
+	m->seltags = s->seltags;
+	m->tagset[0] = s->tagset[0] & TAGMASK;
+	m->tagset[1] = s->tagset[1] & TAGMASK;
+	m->pertag->curtag = s->curtag;
+	m->pertag->prevtag = s->prevtag;
+	return true;
+}
 
 bool is_special_active(const Monitor *m) {
 	return m && !m->isoverview && (m->tagset[m->seltags] & TAG0_MASK);
@@ -762,7 +821,7 @@ void handle_new_output(struct wl_listener *listener, void *data) {
 		server.chvt_backup_tag = 0;
 		memset(server.chvt_backup_monitor_name, 0,
 			   sizeof(server.chvt_backup_monitor_name));
-	} else {
+	} else if (!restore_monitor_tag_state(m)) {
 		m->tagset[0] = m->tagset[1] = 1;
 		m->pertag->curtag = m->pertag->prevtag = 1;
 	}
@@ -821,6 +880,7 @@ void handle_new_output(struct wl_listener *listener, void *data) {
 
 void handle_output_destroy(struct wl_listener *listener, void *data) {
 	Monitor *m = wl_container_of(listener, m, destroy);
+	save_monitor_tag_state(m);
 	LayerSurface *l = NULL, *tmp = NULL;
 	uint32_t i;
 
@@ -835,7 +895,7 @@ void handle_output_destroy(struct wl_listener *listener, void *data) {
 	// clean ext-workspaces grouplab
 	if (m->ext_group) {
 		wlr_ext_workspace_group_handle_v1_output_leave(m->ext_group,
-												m->wlr_output);
+												  m->wlr_output);
 		wlr_ext_workspace_group_handle_v1_destroy(m->ext_group);
 		m->ext_group = NULL;
 	}
@@ -895,6 +955,7 @@ void handle_output_destroy(struct wl_listener *listener, void *data) {
 }
 
 void monitor_close(Monitor *m) {
+	save_monitor_tag_state(m);
 	/* update selected_monitor if needed and
 	 * move closed monitor's clients to the focused one */
 	Client *c = NULL;
@@ -1117,6 +1178,8 @@ void handle_output_layout_change(struct wl_listener *listener, void *data) {
 
 		/* Calculate the effective monitor geometry to use for clients */
 		arrange_layers(m);
+		if (m->pertag->ltidxs[get_mon_curtag(m)]->id == ZONES)
+			zones_realign_visible_floating(m);
 		/* Don't move clients to the left output when plugging monitors */
 		arrange(m, false, false);
 		/* make sure fullscreen clients have the right size */
