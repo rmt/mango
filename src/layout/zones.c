@@ -247,8 +247,10 @@ void zones_assign_visible_by_geometry(Monitor *m, bool force) {
 		int32_t best_occupancy = INT_MAX;
 		int64_t best_zone_area = INT64_MAX;
 
+		/* Parented and fixed-size X11 windows use their requested placement. */
 		if (!VISIBLEON(c, m) || client_is_unmanaged(c) || c->iskilling ||
-			c->isfullscreen || c->ismaximizescreen ||
+			client_should_preserve_requested_position(c) || c->isfullscreen ||
+			c->ismaximizescreen ||
 			(!force && zones_client_has_valid_zone(c)))
 			continue;
 
@@ -295,7 +297,8 @@ void zones_realign_visible_floating(Monitor *m) {
 
 	wl_list_for_each(c, &server.clients, link) {
 		if (!VISIBLEON(c, m) || !c->isfloating || c->iskilling ||
-			c->isfullscreen || c->ismaximizescreen ||
+			client_should_preserve_requested_position(c) || c->isfullscreen ||
+			c->ismaximizescreen ||
 			!zones_client_has_valid_zone(c))
 			continue;
 
