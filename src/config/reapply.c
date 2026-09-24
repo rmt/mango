@@ -26,6 +26,7 @@
 #include "mango/ipc/ipc.h"
 #include "mango/layout/arrange.h"
 #include "mango/layout/layout.h"
+#include "mango/layout/zones.h"
 #include "mango/manage/client.h"
 #include "mango/manage/layer.h"
 #include "mango/manage/misc.h"
@@ -170,13 +171,22 @@ void reset_option(void) {
 	reapply_tagrule();
 	reapply_monitor_rules();
 
+	Client *c;
+	wl_list_for_each(c, &server.clients, link)
+		client_sync_layer(c);
+
 	/* A global reload must re-apply every monitor, not just the selected one:
 	 * layout-affecting options such as always_show_group_bar reserve or release
 	 * space on all outputs. */
 	Monitor *m = NULL;
 	wl_list_for_each(m, &server.monitors, link) {
-		if (m->wlr_output->enabled)
-			arrange(m, false, false);
+		if (!m->wlr_output->enabled)
+			continue;
+		if (m->pertag && m->pertag->ltidxs[get_mon_curtag(m)]->id == ZONES) {
+			zones_assign_missing_visible(m);
+			zones_realign_visible_floating(m);
+		}
+		arrange(m, false, false);
 	}
 }
 

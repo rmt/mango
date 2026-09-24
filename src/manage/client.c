@@ -1819,9 +1819,9 @@ void client_apply_rules(Client *c, Monitor **rule_mon, uint32_t *rule_tags) {
 	}
 
 	// apply overlay rule
-	if (c->isoverlay && c->scene) {
-		wlr_scene_node_reparent(&c->scene->node,
-								server.layers[client_target_layer(c)]);
+	if (c->isoverlay && c->scene && c->mon) {
+		client_reparent_group(c);
+		client_raise_group(c);
 	}
 }
 
