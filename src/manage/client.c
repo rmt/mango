@@ -1690,8 +1690,9 @@ void client_apply_rules(Client *c) {
 	}
 
 	// apply overlay rule
-	if (c->isoverlay && c->scene) {
-		wlr_scene_node_reparent(&c->scene->node, server.layers[LyrOverlay]);
+	if (c->isoverlay && c->scene && c->mon) {
+		client_reparent_group(c);
+		client_raise_group(c);
 	}
 }
 

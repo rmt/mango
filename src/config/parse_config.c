@@ -19,6 +19,7 @@
 #include "mango/ipc/ipc.h"
 #include "mango/layout/arrange.h"
 #include "mango/layout/layout.h"
+#include "mango/layout/zones.h"
 #include "mango/manage/client.h"
 #include "mango/manage/monitor.h"
 #include "mango/switcher/switcher.h"
@@ -2766,6 +2767,18 @@ void reset_option(void) {
 
 	reapply_tagrule();
 	reapply_monitor_rules();
+
+	Client *c;
+	wl_list_for_each(c, &server.clients, link)
+		client_sync_layer(c);
+	Monitor *m;
+	wl_list_for_each(m, &server.monitors, link) {
+		if (!m->wlr_output->enabled || !m->pertag ||
+			m->pertag->ltidxs[get_mon_curtag(m)]->id != ZONES)
+			continue;
+		zones_assign_missing_visible(m);
+		zones_realign_visible_floating(m);
+	}
 
 	arrange(server.selected_monitor, false, false);
 }
