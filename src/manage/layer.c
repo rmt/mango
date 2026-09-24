@@ -8,6 +8,8 @@
 #include "mango/input/pointer.h"
 #include "mango/ipc/ipc.h"
 #include "mango/layout/arrange.h"
+#include "mango/layout/layout.h"
+#include "mango/layout/zones.h"
 #include "mango/manage/client.h"
 #include "mango/manage/monitor.h"
 #include <scenefx/types/wlr_scene.h>
@@ -148,6 +150,8 @@ void arrange_layers(Monitor *m) {
 
 	if (!wlr_box_equal(&usable_area, &m->w)) {
 		m->w = usable_area;
+		if (m->pertag->ltidxs[get_mon_curtag(m)]->id == ZONES)
+			zones_realign_visible_floating(m);
 		arrange(m, false, false);
 	}
 
