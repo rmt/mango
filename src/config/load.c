@@ -419,6 +419,8 @@ bool parse_config(void) {
 	bool keybindings_conflict = false;
 	set_value_default();
 	parse_correct = parse_config_file(&config, filename, true);
+	if (!ensure_default_zones(&config))
+		parse_correct = false;
 	resolve_bindings_to_configured_layouts(&config);
 	set_default_key_bindings(&config);
 	override_config();

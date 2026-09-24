@@ -5,6 +5,7 @@
 #include "mango/common/scene_node.h"
 #include "mango/common/server.h"
 #include "mango/common/util.h"
+#include "mango/layout/zones.h"
 #include "mango/dispatch/bind.h"
 #include "mango/ext-protocol/foreign-toplevel.h"
 #include "mango/ext-protocol/text-input.h"
@@ -2762,6 +2763,8 @@ void handle_client_destroy(struct wl_listener *listener, void *data) {
 
 	switcher_remove_client(c);
 	pointer_client_destroyed(c);
+	free(c->zone_name);
+	c->zone_name = NULL;
 	free(c);
 }
 
@@ -2949,6 +2952,15 @@ void client_focus(Client *c, int32_t lift) {
 
 	if (c && c->no_focus)
 		return;
+
+	if (server.selected_monitor && server.selected_monitor->sel &&
+		server.selected_monitor->sel != c &&
+		zones_clients_share_zone(server.selected_monitor->sel, c) &&
+		zones_client_is_docked_floating(server.selected_monitor->sel) &&
+		!server.selected_monitor->sel->isoverlay &&
+		server.selected_monitor->sel->scene)
+		wlr_scene_node_lower_to_bottom(
+			&server.selected_monitor->sel->scene->node);
 
 	/* Raise client in stacking order if requested */
 	if (c && lift) {
@@ -3294,6 +3306,11 @@ void client_set_monitor(Client *c, Monitor *m, uint32_t newtags, bool focus) {
 		reset_foreign_tolevel(c, oldmon, m);
 		resize(c, c->geom, (ResizeOpts){.interact = 0});
 		client_reset_mon_tags(c, m, newtags);
+		if (!zones_client_has_valid_zone(c) && c->tags &&
+			m->pertag->ltidxs[get_client_tag_idx(c)]->id == ZONES) {
+			const ConfigZone *zone = zones_default_for_monitor(m);
+			if (zone) zones_set_client_zone(c, zone);
+		}
 		check_match_tag_floating_rule(c, m);
 		client_set_floating(c, c->isfloating);
 		client_apply_fullscreen(c, c->isfullscreen,
@@ -3307,9 +3324,12 @@ void client_set_monitor(Client *c, Monitor *m, uint32_t newtags, bool focus) {
 
 void client_change_mon(Client *c, Monitor *m) {
 	client_set_monitor(c, m, c->tags, true);
-	if (c->isfloating) {
-		c->float_geom = c->geom =
-			client_center_geometry(c, c->mon, c->geom, 0, 0);
+	if (c->isfloating && c->mon) {
+		const ConfigZone *zone = zones_client_has_valid_zone(c)
+			? zones_find(c->zone_name) : NULL;
+		c->float_geom = c->geom = zone
+			? zones_align_floating(c, zone)
+			: client_center_geometry(c, c->mon, c->geom, 0, 0);
 	}
 }
 
@@ -3403,6 +3423,18 @@ void client_set_floating(Client *c, int32_t floating) {
 			resize(c, c->float_geom, (ResizeOpts){.interact = 0});
 		} else {
 			resize(c, target_box, (ResizeOpts){.interact = 0});
+		}
+
+		const Layout *layout = c->mon->pertag->ltidxs[get_mon_curtag(c->mon)];
+		if (layout && layout->id == ZONES) {
+			const ConfigZone *zone = zones_client_has_valid_zone(c)
+				? zones_find(c->zone_name) : zones_default_for_monitor(c->mon);
+			if (zone && zones_set_client_zone(c, zone)) {
+				c->geom = zones_align_floating(c, zone);
+				c->float_geom = c->geom;
+				c->iscustompos = 1;
+				resize(c, c->geom, (ResizeOpts){0});
+			}
 		}
 
 		c->need_float_size_reduce = 0;
@@ -4168,18 +4200,21 @@ void client_swap_layout_properties(Client *c1, Client *c2) {
 	double stack_inner_per = c1->stack_inner_per;
 	double master_size_weight = c1->master_size_weight;
 	double stack_size_weight = c1->stack_size_weight;
+	char *zone_name = c1->zone_name;
 
 	c1->master_inner_per = c2->master_inner_per;
 	c1->master_mfact_per = c2->master_mfact_per;
 	c1->stack_inner_per = c2->stack_inner_per;
 	c1->master_size_weight = c2->master_size_weight;
 	c1->stack_size_weight = c2->stack_size_weight;
+	c1->zone_name = c2->zone_name;
 
 	c2->master_inner_per = master_inner_per;
 	c2->master_mfact_per = master_mfact_per;
 	c2->stack_inner_per = stack_inner_per;
 	c2->master_size_weight = master_size_weight;
 	c2->stack_size_weight = stack_size_weight;
+	c2->zone_name = zone_name;
 }
 
 void client_swap_monitors_and_tags(Client *c1, Client *c2) {
@@ -4353,12 +4388,12 @@ uint32_t client_target_layer(Client *c) {
 
 	if (special_overlay)
 		return c->isfullscreen		 ? LyrSpecialFullscreen
-			   : c->isfloating		 ? LyrSpecialFloat
+			   : c->isfloating && !zones_client_is_docked_floating(c) ? LyrSpecialFloat
 			   : c->ismaximizescreen ? LyrSpecialMaximize
 									 : LyrSpecialTile;
 
 	return c->isfullscreen		 ? LyrFullscreen
-		   : c->isfloating		 ? LyrFloat
+		   : c->isfloating && !zones_client_is_docked_floating(c) ? LyrFloat
 		   : c->ismaximizescreen ? LyrMaximize
 								 : LyrTile;
 }

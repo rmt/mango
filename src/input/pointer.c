@@ -14,12 +14,14 @@
 #include "mango/layout/dwindle.h"
 #include "mango/layout/layout.h"
 #include "mango/layout/scroll.h"
+#include "mango/layout/zones.h"
 #include "mango/manage/client.h"
 #include "mango/manage/layer.h"
 #include "mango/manage/misc.h"
 #include "mango/manage/monitor.h"
 #include "mango/manage/tab.h"
 #include "mango/switcher/switcher.h"
+#include <strings.h>
 #include <scenefx/types/wlr_scene.h>
 #include <wlr/backend/libinput.h>
 #include <wlr/types/wlr_cursor.h>
@@ -210,7 +212,10 @@ void pointer_check_confine_client(void) {
 	confine_pointer_last = c;
 }
 
+static void hide_zone_droparea(void);
 void pointer_client_destroyed(Client *c) {
+	if (c && c == server.grab_client)
+		hide_zone_droparea();
 	if (confine_pointer_last == c) {
 		confine_pointer_last = NULL;
 	}
@@ -994,7 +999,10 @@ void pointer_resize_floating_window(Client *gc, double x, double y) {
 }
 
 static void client_begin_drag_float(Client *c) {
-	c->drag_to_tile = true;
+	const Layout *layout = c->mon->pertag->ltidxs[get_mon_curtag(c->mon)];
+	c->drag_to_zone = layout && layout->id == ZONES;
+	c->drag_to_tile = !c->drag_to_zone;
+	c->drag_was_tiled = true;
 	exit_scroller_stack(c);
 	client_set_floating(c, 1);
 	c->drag_tile_float_backup_geom = c->float_geom;
@@ -1003,12 +1011,33 @@ static void client_begin_drag_float(Client *c) {
 	set_size_per(c->mon, c, false);
 }
 
+static void hide_zone_droparea(void) {
+	server.dropzone = NULL;
+	if (!server.zone_droparea)
+		return;
+	wlr_scene_node_set_enabled(&server.zone_droparea->node, false);
+	wlr_scene_rect_set_size(server.zone_droparea, 0, 0);
+}
+
+static void show_zone_droparea(Monitor *m, const ConfigZone *zone) {
+	if (!server.zone_droparea || !m || !zone) {
+		hide_zone_droparea();
+		return;
+	}
+	struct wlr_box box = zones_box(m, zone);
+	server.dropzone = zone;
+	wlr_scene_node_set_position(&server.zone_droparea->node, box.x, box.y);
+	wlr_scene_rect_set_size(server.zone_droparea, box.width, box.height);
+	wlr_scene_node_raise_to_top(&server.zone_droparea->node);
+	wlr_scene_node_set_enabled(&server.zone_droparea->node, true);
+}
+
 bool pointer_begin_move_resize(Client *gc, uint32_t mode, double x, double y,
 							   uint32_t edge) {
 	if (server.cursor_mode != CurNormal && server.cursor_mode != CurPressed)
 		return false;
 
-	if (!gc || (mode != CurMove && mode != CurResize) ||
+	if (!gc || (mode != CurMove && mode != CurResize) || !gc->mon ||
 		client_is_unmanaged(gc) || gc->isfullscreen || gc->ismaximizescreen) {
 		server.grab_client = NULL;
 		return false;
@@ -1017,8 +1046,17 @@ bool pointer_begin_move_resize(Client *gc, uint32_t mode, double x, double y,
 	server.grab_client = gc;
 	server.grab_is_border_resize = edge != 0;
 
-	if (gc->isfloating == 0 && mode == CurMove)
-		client_begin_drag_float(gc);
+	if (mode == CurMove) {
+		const Layout *layout = gc->mon->pertag->ltidxs[get_mon_curtag(gc->mon)];
+		if (gc->isfloating && layout && layout->id == ZONES &&
+			zones_client_has_valid_zone(gc)) {
+			gc->drag_to_zone = true;
+			gc->drag_to_tile = false;
+			gc->drag_was_tiled = false;
+		} else if (!gc->isfloating) {
+			client_begin_drag_float(gc);
+		}
+	}
 
 	if (gc->drag_to_tile && config.drag_tile_to_tile &&
 		config.drag_tile_small) {
@@ -1138,13 +1176,18 @@ void pointer_end_grab_client(bool follow_pointer) {
 	server.grab_client = NULL;
 	server.start_drag_window = false;
 	server.last_apply_drag_time = 0;
-	if (gc->drag_to_tile && config.drag_tile_to_tile) {
+	if ((gc->drag_to_tile && config.drag_tile_to_tile) || gc->drag_to_zone) {
+		bool restore_geom = gc->drag_to_tile || gc->drag_was_tiled;
 		pointer_place_drag_tile(gc);
-		gc->float_geom = gc->drag_tile_float_backup_geom;
+		if (restore_geom)
+			gc->float_geom = gc->drag_tile_float_backup_geom;
 	} else if (!border_resize || moved) {
 		apply_window_snap(gc);
 	}
 	gc->drag_to_tile = false;
+	gc->drag_to_zone = false;
+	gc->drag_was_tiled = false;
+	hide_zone_droparea();
 	if (server.drop_client) {
 		server.drop_client->enable_drop_area_draw = false;
 		client_set_drop_area(server.drop_client);
@@ -1368,6 +1411,19 @@ void pointer_process_motion(uint32_t time, struct wlr_input_device *device,
 			server.drop_client->enable_drop_area_draw = false;
 			client_set_drop_area(server.drop_client);
 			server.drop_client = NULL;
+		}
+		if (server.grab_client->drag_to_zone) {
+			Monitor *m = monitor_at_point(server.cursor->x, server.cursor->y);
+			const Layout *layout =
+				m ? m->pertag->ltidxs[get_mon_curtag(m)] : NULL;
+			const ConfigZone *zone =
+				layout && layout->id == ZONES
+					? zones_pick_for_box(m, server.grab_client->float_geom)
+					: NULL;
+			if (zone)
+				show_zone_droparea(m, zone);
+			else
+				hide_zone_droparea();
 		}
 		resize(server.grab_client, server.grab_client->float_geom,
 			   (ResizeOpts){.interact = 1});
@@ -1660,6 +1716,35 @@ Client *find_closest_tiled_client(Client *c) {
 }
 
 void pointer_place_drag_tile(Client *c) {
+	const Layout *current =
+		c && c->mon ? c->mon->pertag->ltidxs[get_mon_curtag(c->mon)] : NULL;
+	if (c && c->drag_to_zone && current && current->id == ZONES) {
+		const ConfigZone *drop = server.dropzone;
+		const ConfigZone *zone = drop;
+		bool same =
+			zone && c->zone_name && strcasecmp(c->zone_name, zone->name) == 0;
+		if (!c->drag_was_tiled && c->isfloating) {
+			if (!zone)
+				zone = zones_client_has_valid_zone(c)
+						   ? zones_find(c->zone_name)
+						   : zones_default_for_monitor(c->mon);
+			if (zone && (!same || !drop) && zones_set_client_zone(c, zone)) {
+				c->geom = zones_align_floating(c, zone);
+				c->iscustompos = 1;
+				resize(c, c->geom, (ResizeOpts){0});
+			}
+			c->float_geom = c->geom;
+			client_reparent_group(c);
+			hide_zone_droparea();
+			return;
+		}
+		if (zone)
+			zones_set_client_zone(c, zone);
+		client_set_floating(c, 0);
+		hide_zone_droparea();
+		return;
+	}
+
 	Client *closest = find_closest_tiled_client(c);
 
 	if (closest && closest->mon) {

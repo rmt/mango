@@ -113,6 +113,8 @@ int32_t toggle_render_border(const Arg *arg);
 int32_t create_virtual_output(const Arg *arg);
 int32_t destroy_all_virtual_output(const Arg *arg);
 int32_t focus_last(const Arg *arg);
+int32_t focus_zone(const Arg *arg);
+int32_t move_to_zone(const Arg *arg);
 int32_t toggle_trackpad_enable(const Arg *arg);
 int32_t setoption(const Arg *arg);
 int32_t disable_monitor(const Arg *arg);

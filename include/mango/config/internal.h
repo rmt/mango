@@ -30,6 +30,8 @@ void set_binding_keymode(Config *config, char mode[28], bool *iscommonmode,
 
 int32_t parse_overcircle_direction(const char *str);
 
+bool ensure_default_zones(Config *config);
+
 bool parse_toml_stream(Config *config, FILE *file, const char *full_path);
 
 #endif

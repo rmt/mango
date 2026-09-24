@@ -16,12 +16,14 @@
 #include "mango/layout/layout.h"
 #include "mango/layout/overview.h"
 #include "mango/layout/scroll.h"
+#include "mango/layout/zones.h"
 #include "mango/manage/client.h"
 #include "mango/manage/misc.h"
 #include "mango/manage/monitor.h"
 #include "mango/manage/tab.h"
 #include "mango/overview/overview.h"
 #include <fcntl.h>
+#include <strings.h>
 #include <unistd.h>
 #include <wlr/backend.h>
 #include <wlr/backend/headless.h>
@@ -450,6 +452,47 @@ int32_t focus_last(const Arg *arg) {
 		client_focus(tc, 1);
 		target = get_tags_first_tag(tc->tags);
 		client_switch_view(&(Arg){.ui = target}, true);
+	}
+	return 0;
+}
+
+static bool focus_zone_matches(const char *names, const char *name) {
+	if (!names || !name)
+		return false;
+	for (const char *p = names; *p;) {
+		const char *end = strchr(p, '|');
+		if (!end)
+			end = p + strlen(p);
+		if ((size_t)(end - p) == strlen(name) &&
+			strncasecmp(p, name, end - p) == 0)
+			return true;
+		if (!*end)
+			break;
+		p = end + 1;
+	}
+	return false;
+}
+
+int32_t focus_zone(const Arg *arg) {
+	Monitor *m = server.selected_monitor;
+	if (!m || !arg || !arg->v || !*arg->v)
+		return 0;
+	Client *c, *first = NULL, *last = NULL;
+	wl_list_for_each(c, &server.focus_stack, flink) {
+		if (c->mon != m || c->iskilling || c->isminimized || c->isunglobal ||
+			!client_surface_mapped(c) || client_is_unmanaged(c) ||
+			!VISIBLEON(c, m) || !zones_client_has_valid_zone(c) ||
+			!focus_zone_matches(arg->v, c->zone_name))
+			continue;
+		if (!first)
+			first = c;
+		last = c;
+	}
+	Client *target = first == m->sel ? last : first;
+	if (target) {
+		client_focus(target, 1);
+		if (config.warpcursor)
+			pointer_warp_to_client(target);
 	}
 	return 0;
 }
@@ -899,6 +942,20 @@ int32_t restore_minimized(const Arg *arg) {
 	return 0;
 }
 
+static void set_monitor_layout(Monitor *m, const Layout *layout) {
+	if (!m || !layout)
+		return;
+	uint32_t tag = get_mon_curtag(m);
+	const Layout *old = m->pertag->ltidxs[tag];
+	if (old && old->id == ZONES && layout->id != ZONES)
+		zones_clear_visible(m);
+	m->pertag->ltidxs[tag] = layout;
+	if ((!old || old->id != ZONES) && layout->id == ZONES)
+		zones_assign_visible_by_geometry(m, true);
+	if (layout->id == ZONES)
+		zones_assign_missing_visible(m);
+}
+
 int32_t set_layout(const Arg *arg) {
 	int32_t jk;
 	if (!server.selected_monitor)
@@ -906,9 +963,7 @@ int32_t set_layout(const Arg *arg) {
 
 	for (jk = 0; jk < LENGTH(layouts); jk++) {
 		if (strcmp(layouts[jk].name, arg->v) == 0) {
-			server.selected_monitor->pertag
-				->ltidxs[get_mon_curtag(server.selected_monitor)] =
-				&layouts[jk];
+			set_monitor_layout(server.selected_monitor, &layouts[jk]);
 			clear_fullscreen_and_maximized_state(server.selected_monitor);
 			arrange(server.selected_monitor, false, false);
 			printstatus(IPC_WATCH_ARRANGGE);
@@ -1437,7 +1492,7 @@ int32_t switch_layout(const Arg *arg) {
 			len =
 				MANGO_MAX(strlen(layouts[ji].name), strlen(target_layout_name));
 			if (strncmp(layouts[ji].name, target_layout_name, len) == 0) {
-				server.selected_monitor->pertag->ltidxs[tag] = &layouts[ji];
+				set_monitor_layout(server.selected_monitor, &layouts[ji]);
 
 				break;
 			}
@@ -1451,8 +1506,9 @@ int32_t switch_layout(const Arg *arg) {
 	for (jk = 0; jk < LENGTH(layouts); jk++) {
 		if (strcmp(layouts[jk].name,
 				   server.selected_monitor->pertag->ltidxs[tag]->name) == 0) {
-			server.selected_monitor->pertag->ltidxs[tag] =
-				jk == LENGTH(layouts) - 1 ? &layouts[0] : &layouts[jk + 1];
+			set_monitor_layout(server.selected_monitor,
+							   jk == LENGTH(layouts) - 1 ? &layouts[0]
+														 : &layouts[jk + 1]);
 			clear_fullscreen_and_maximized_state(server.selected_monitor);
 			arrange(server.selected_monitor, false, false);
 			printstatus(IPC_WATCH_ARRANGGE);
@@ -1874,6 +1930,8 @@ int32_t toggle_overlay(const Arg *arg) {
 	c->isoverlay ^= 1;
 
 	client_reparent_group(c);
+	if (c->isoverlay)
+		client_raise_group(c);
 	client_update_border_color(c);
 	return 0;
 }
@@ -2736,6 +2794,48 @@ int32_t focus_by_id(const Arg *arg) {
 		return 0;
 
 	client_active(arg->tc);
+	return 0;
+}
+
+int32_t move_to_zone(const Arg *arg) {
+	if (!server.selected_monitor || server.selected_monitor->isoverview ||
+		!arg || !arg->v)
+		return 0;
+	Client *c = arg->tc ? arg->tc : server.selected_monitor->sel;
+	if (!c || !c->mon || c->iskilling || !client_surface_mapped(c) ||
+		client_is_unmanaged(c) || c->isfullscreen || c->ismaximizescreen)
+		return 0;
+	const ConfigZone *zone = zones_find(arg->v);
+	if (!zone)
+		return 0;
+	if (c->isfloating) {
+		if (!zones_set_client_zone(c, zone))
+			return 0;
+		c->geom = zones_align_floating(c, zone);
+		c->float_geom = c->geom;
+		c->iscustompos = 1;
+		client_reparent_group(c);
+		resize(c, c->geom, (ResizeOpts){0});
+		client_focus(c, 1);
+		return 0;
+	}
+	const Layout *layout = NULL;
+	for (size_t i = 0; i < LENGTH(layouts); i++)
+		if (layouts[i].id == ZONES) {
+			layout = &layouts[i];
+			break;
+		}
+	if (!layout)
+		return 0;
+	bool entering = c->mon->pertag->ltidxs[get_mon_curtag(c->mon)]->id != ZONES;
+	if (entering)
+		set_monitor_layout(c->mon, layout);
+	if (!zones_set_client_zone(c, zone))
+		return 0;
+	if (!entering)
+		zones_assign_missing_visible(c->mon);
+	arrange(c->mon, false, false);
+	client_focus(c, 1);
 	return 0;
 }
 

@@ -5,6 +5,7 @@
 
 #include "mango/common/log.h"
 #include "mango/common/server.h"
+#include <scenefx/types/wlr_scene.h>
 
 void free_circle_layout(Config *config) {
 	if (config->circle_layout) {
@@ -336,6 +337,17 @@ void free_config(void) {
 
 	// Frees circle_layout.
 	free_circle_layout(&config);
+
+	server.dropzone = NULL;
+	if (server.zone_droparea)
+		wlr_scene_node_set_enabled(&server.zone_droparea->node, false);
+	for (int32_t i = 0; i < config.zones_count; i++)
+		free(config.zones[i].name);
+	free(config.zones);
+	config.zones = NULL;
+	config.zones_count = 0;
+	free(config.defaultzone);
+	config.defaultzone = NULL;
 
 	// Frees animation resources.
 	free_baked_points();

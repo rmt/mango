@@ -43,6 +43,107 @@
 #include <wlr/types/wlr_output_layout.h>
 #include <wlr/types/wlr_xcursor_manager.h>
 
+static bool parse_zone_percent(const char *text, double min, double *out) {
+	char *end;
+	if (!text || !out)
+		return false;
+	double n = strtod(text, &end);
+	if (end == text || !isfinite(n))
+		return false;
+	while (isspace((unsigned char)*end))
+		end++;
+	if (*end == '%')
+		end++;
+	while (isspace((unsigned char)*end))
+		end++;
+	if (*end)
+		return false;
+	*out = fmax(min, fmin(1.0, n / 100.0));
+	return true;
+}
+
+static bool append_config_zone(Config *cfg, ConfigZone zone) {
+	ConfigZone *next =
+		realloc(cfg->zones, (size_t)(cfg->zones_count + 1) * sizeof(*next));
+	if (!next)
+		return false;
+	cfg->zones = next;
+	cfg->zones[cfg->zones_count++] = zone;
+	return true;
+}
+
+bool ensure_default_zones(Config *cfg) {
+	if (cfg->zones_count)
+		return true;
+	ConfigZone left = {.name = strdup("left"), .x = 0, .y = 0, .w = .5, .h = 1};
+	ConfigZone right = {
+		.name = strdup("right"), .x = .5, .y = 0, .w = .5, .h = 1};
+	if (!left.name || !right.name) {
+		free(left.name);
+		free(right.name);
+		return false;
+	}
+	if (!append_config_zone(cfg, left)) {
+		free(left.name);
+		free(right.name);
+		return false;
+	}
+	if (!append_config_zone(cfg, right)) {
+		free(right.name);
+		return false;
+	}
+	return true;
+}
+
+static bool parse_zone(Config *cfg, char *value) {
+	ConfigZone zone = {0};
+	unsigned seen = 0;
+	char *save = NULL;
+	for (char *token = strtok_r(value, ",", &save); token;
+		 token = strtok_r(NULL, ",", &save)) {
+		char *colon = strchr(token, ':');
+		if (!colon)
+			goto invalid;
+		*colon = '\0';
+		char *key = token, *val = colon + 1;
+		trim_whitespace(key);
+		trim_whitespace(val);
+		if (strcmp(key, "name") == 0) {
+			if (!*val)
+				goto invalid;
+			char *name = strdup(val);
+			if (!name)
+				goto invalid;
+			free(zone.name);
+			zone.name = name;
+			seen |= 1;
+		} else if (strcmp(key, "x") == 0) {
+			if (!parse_zone_percent(val, 0, &zone.x))
+				goto invalid;
+			seen |= 2;
+		} else if (strcmp(key, "y") == 0) {
+			if (!parse_zone_percent(val, 0, &zone.y))
+				goto invalid;
+			seen |= 4;
+		} else if (strcmp(key, "w") == 0) {
+			if (!parse_zone_percent(val, .01, &zone.w))
+				goto invalid;
+			seen |= 8;
+		} else if (strcmp(key, "h") == 0) {
+			if (!parse_zone_percent(val, .01, &zone.h))
+				goto invalid;
+			seen |= 16;
+		} else
+			goto invalid;
+	}
+	if (seen != 31 || !append_config_zone(cfg, zone))
+		goto invalid;
+	return true;
+invalid:
+	free(zone.name);
+	return false;
+}
+
 bool parse_option(Config *config, char *key, char *value, int line_number) {
 	if (strcmp(key, "key_mode") == 0) {
 		snprintf(config->keymode, sizeof(config->keymode), "%.27s", value);
@@ -1004,6 +1105,19 @@ bool parse_option(Config *config, char *key, char *value, int line_number) {
 			return false;
 		} else {
 			convert_hex_to_rgba(config->overlaycolor, color);
+		}
+	} else if (strcmp(key, "defaultzone") == 0) {
+		trim_whitespace(value);
+		char *name = strdup(*value ? value : "current");
+		if (!name)
+			return false;
+		free(config->defaultzone);
+		config->defaultzone = name;
+	} else if (strcmp(key, "zone") == 0) {
+		if (!parse_zone(config, value)) {
+			fprintf(stderr, "Invalid zone definition at line %d\n",
+					line_number);
+			return false;
 		}
 	} else if (strcmp(key, "monitor_rule") == 0) {
 		ConfigMonitorRule *new_monitor_rules = realloc(
@@ -2607,6 +2721,7 @@ void set_value_default() {
 	config.overlaycolor[1] = 0xa5 / 255.0f;
 	config.overlaycolor[2] = 0x7c / 255.0f;
 	config.overlaycolor[3] = 1.0f;
+	config.defaultzone = strdup("current");
 }
 
 void override_config(void) {
