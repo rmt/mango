@@ -1,3 +1,9 @@
+## Fork status
+
+This fork is being abandoned due to a lack of interest in the zones feature from Mango's BDFL.
+
+---
+
 <div align="center">
   <img src="https://github.com/mangowm/mango/blob/main/assets/mango-transparency-256.png" alt="Mango Logo" width="120"/>
 
